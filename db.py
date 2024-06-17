@@ -86,17 +86,33 @@ def get_admins():
 
 
 # tickers
-def add_new_ticker(ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path):
+def add_new_ticker(ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction):
     connection = get_db_connection()
     cursor = connection.cursor()
     try:
         cursor.execute("""
-        INSERT INTO tickers (ticker, entry_point, take_profit, stop_loss, current_rate, setup_image_path)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        """, (ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path))
+        INSERT INTO tickers (ticker, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction))
         connection.commit()
     except Exception as e:
         print(f"Ошибка при добавлении данных: {e}")
     finally:
         cursor.close()
         connection.close()
+
+
+# def add_new_ticker(ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path):
+#     connection = get_db_connection()
+#     cursor = connection.cursor()
+#     try:
+#         cursor.execute("""
+#         INSERT INTO tickers (ticker, entry_point, take_profit, stop_loss, current_rate, setup_image_path)
+#         VALUES (%s, %s, %s, %s, %s, %s)
+#         """, (ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path))
+#         connection.commit()
+#     except Exception as e:
+#         print(f"Ошибка при добавлении данных: {e}")
+#     finally:
+#         cursor.close()
+#         connection.close()

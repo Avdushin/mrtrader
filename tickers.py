@@ -32,7 +32,7 @@ def process_ticker_name(bot, message):
 
 
 def process_entry_point(bot, message, ticker_name):
-    print("Ticker name received:", ticker_name)  # Исправлено для отладки
+    print("Ticker name received:", ticker_name)
     entry_point = float(message.text)
     bot.send_message(message.chat.id, "Введите тейк-профит:")
     bot.register_next_step_handler(message, lambda message: process_take_profit(bot, message, ticker_name, entry_point))
@@ -47,27 +47,38 @@ def process_stop_loss(bot, message, ticker_name, entry_point, take_profit):
     bot.send_message(message.chat.id, "Введите текущую стоимость:")
     bot.register_next_step_handler(message, lambda message: process_current_rate(bot, message, ticker_name, entry_point, take_profit, stop_loss))
 
+# def process_current_rate(bot, message, ticker_name, entry_point, take_profit, stop_loss):
+#     current_rate = float(message.text)
+#     bot.send_message(message.chat.id, "Прикрепите изображение сетапа:")
+#     bot.register_next_step_handler(message, lambda message: process_setup_image(bot, message, ticker_name, entry_point, take_profit, stop_loss, current_rate))
+
 def process_current_rate(bot, message, ticker_name, entry_point, take_profit, stop_loss):
     current_rate = float(message.text)
-    bot.send_message(message.chat.id, "Прикрепите изображение сетапа:")
-    bot.register_next_step_handler(message, lambda message: process_setup_image(bot, message, ticker_name, entry_point, take_profit, stop_loss, current_rate))
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("Long", callback_data=f"direction_Long_{ticker_name}_{entry_point}_{take_profit}_{stop_loss}_{current_rate}"))
+    markup.add(types.InlineKeyboardButton("Short", callback_data=f"direction_Short_{ticker_name}_{entry_point}_{take_profit}_{stop_loss}_{current_rate}"))
+    bot.send_message(message.chat.id, "Выберите направление:", reply_markup=markup)
 
-# def process_setup_image(bot, message, ticker_name, entry_point, take_profit, stop_loss, current_rate):
-#     if message.content_type == 'photo':
-#         setup_image_path = message.photo[-1].file_id
-#     else:
-#         setup_image_path = None
-#     db.add_new_ticker(ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path)
-#     bot.send_message(message.chat.id, "Тикер успешно добавлен!")
+def process_direction(bot, call):
+    data = call.data.split('_')
+    direction = data[1]
+    ticker_name = data[2]
+    entry_point = float(data[3])
+    take_profit = float(data[4])
+    stop_loss = float(data[5])
+    current_rate = float(data[6])
+    
+    bot.send_message(call.message.chat.id, "Прикрепите изображение сетапа:")
+    bot.register_next_step_handler(call.message, lambda message: process_setup_image(bot, message, ticker_name, entry_point, take_profit, stop_loss, current_rate, direction))
 
-def process_setup_image(bot, message, ticker_name, entry_point, take_profit, stop_loss, current_rate):
+def process_setup_image(bot, message, ticker_name, entry_point, take_profit, stop_loss, current_rate, direction):
     if message.content_type == 'photo':
         # Получаем информацию о файле
         file_id = message.photo[-1].file_id
         file_info = bot.get_file(file_id)
 
         # Загружаем файл
-        downloaded_file = bot.download_file(file_info.file_path)  # Используем file_path из file_info
+        downloaded_file = bot.download_file(file_info.file_path)
         
         # Создаем папку setups если она не существует
         directory = 'setups'
@@ -89,11 +100,11 @@ def process_setup_image(bot, message, ticker_name, entry_point, take_profit, sto
         setup_image_path = None
 
     # Добавляем запись о новом тикере в базу данных
-    db.add_new_ticker(ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path)
+    db.add_new_ticker(ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction)
     bot.send_message(message.chat.id, "Тикер успешно добавлен!")
 
 
-def process_setup_current(bot, message, ticker_name, entry_point, take_profit, stop_loss, current_rate):
+def process_setup_current(bot, message, ticker_name, entry_point, take_profit, stop_loss, current_rate, direction):
     if message.content_markdown == 'поэтому':
         photo_id = message.photo[-1].file_id
         file_info = bot.get_file(photo_id)
@@ -117,7 +128,7 @@ def process_setup_current(bot, message, ticker_name, entry_point, take_profit, s
     else:
         setup_image_path = None
 
-    db.add_new_ticker(ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path)
+    db.add_new_ticker(ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction)
     bot.send_message(message.chat.id, "Тикер успешно добавлен!")
 
 

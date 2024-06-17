@@ -85,6 +85,10 @@ def register_handlers(bot):
     @bot.callback_query_handler(func=lambda call: call.data == 'add_ticker')
     def handle_add_ticker(call):
         initiate_add_ticker(bot, call)
+    
+    @bot.callback_query_handler(func=lambda call: 'direction' in call.data)
+    def handle_direction_selection(call):
+        process_direction(bot, call)
 
 
 
