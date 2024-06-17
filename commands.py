@@ -91,7 +91,6 @@ def register_handlers(bot):
         process_direction(bot, call)
 
 
-
 ### =============================================================================
 
 def process_add_admin(message, bot):

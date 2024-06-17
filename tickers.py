@@ -1,7 +1,6 @@
 # tikers.py
 from telebot import types
 from datetime import datetime
-from tradingview_ta import TA_Handler, Interval, Exchange
 import time, os
 import db
 import logging
@@ -21,7 +20,7 @@ def handle_action(bot, call):
 
 def initiate_add_ticker(bot, call):
     bot.answer_callback_query(call.id)
-    msg = bot.send_message(call.message.chat.id, "Введите имя тикера:")
+    msg = bot.send_message(call.message.chat.id, "Введите имя тикера (название монеты):")
     bot.register_next_step_handler(msg, lambda message: process_ticker_name(bot, message))
 
 def process_ticker_name(bot, message):
@@ -42,21 +41,6 @@ def process_take_profit(bot, message, ticker_name, entry_point):
     take_profit = float(message.text)
     bot.send_message(message.chat.id, "Введите стоп-лосс:")
     bot.register_next_step_handler(message, lambda message: process_stop_loss(bot, message, ticker_name, entry_point, take_profit))
-
-def get_current_price(ticker_name):
-    handler = TA_Handler(
-        symbol=ticker_name,
-        screener="crypto",  # Может быть изменено в зависимости от рынка: "crypto", "forex", "america"
-        exchange="BINANCE",  # BYBIT, BINANCE
-        interval=Interval.INTERVAL_1_MINUTE
-    )
-    try:
-        analysis = handler.get_analysis()
-        return analysis.indicators["close"]  # Получаем последнюю цену закрытия
-    except Exception as e:
-        print("Ошибка при получении данных с TradingView:", str(e))
-        return None
-
 
 def process_stop_loss(bot, message, ticker_name, entry_point, take_profit):
     stop_loss = float(message.text)
