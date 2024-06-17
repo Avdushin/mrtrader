@@ -1,7 +1,7 @@
 # commands.py
 from telebot import types
 from db import is_admin, add_admin, remove_admin, get_admins
-from tickers import manage_tickers
+import tickers
 
 def register_handlers(bot):
     @bot.message_handler(commands=['start', 'help'])
@@ -19,7 +19,7 @@ def register_handlers(bot):
 Мои создатели просят меня мониторить различные токены, а я в свою очередь делюсь оперативной информацией по всем точкам входа с тобой!
 Уда.чной торговли!""", reply_markup=simple_markup)
 
-    @bot.message_handler(func=lambda message: message.text == "Панель администратора")
+    @bot.message_handler(func=lambda message: message.text == "⚙️ Панель администратора")
     def admin_panel(message):
         # Это событие срабатывает, когда пользователь нажимает кнопку "Панель администратора"
         if not is_admin(message.from_user.id):
@@ -64,22 +64,39 @@ def register_handlers(bot):
         bot.send_message(call.message.chat.id, f"Администратор {admin_id} удален.")
 
     """ TICKERS """
-    @bot.message_handler(func=lambda message: message.text == "Тикеры")
+    # @bot.message_handler(func=lambda message: message.text == "Тикеры")
+    # def ticker_handler(message):
+    #     if is_admin(message.from_user.id):
+    #         manage_tickers(bot, message)
+    #     else:
+    #         bot.send_message(message.chat.id, "У вас нет прав для управления тикерами.")
+
+    @bot.message_handler(func=lambda message: message.text == "📈 Тикеры")
     def ticker_handler(message):
         if is_admin(message.from_user.id):
             manage_tickers(bot, message)
         else:
             bot.send_message(message.chat.id, "У вас нет прав для управления тикерами.")
+    
+    @bot.callback_query_handler(func=lambda call: call.data == 'add_ticker')
+    def handle_add_ticker(call):
+        initiate_add_ticker(bot, call)
 
 ### =============================================================================
 
 def process_add_admin(message, bot):
-    user_id = int(message.text)  # Предполагаем, что ввод корректен
-    add_admin(user_id)
-    bot.reply_to(message, f"Пользователь {user_id} добавлен в администраторы.")
+    try:
+        user_id = int(message.text)
+        add_admin(user_id)
+        bot.reply_to(message, f"Пользователь {user_id} добавлен в администраторы.")
+    except ValueError:
+        bot.reply_to(message, "Пожалуйста, введите корректный числовой ID.")
+
 
 def process_remove_admin(message, bot):
-    user_id = int(message.text)  # Предполагаем, что ввод корректен
-    remove_admin(user_id)
-    bot.reply_to(message, f"Пользователь {user_id} удален из администраторов.")
-
+    try:
+        user_id = int(message.text)  # Предполагаем, что ввод корректен
+        remove_admin(user_id)
+        bot.reply_to(message, f"Пользователь {user_id} удален из администраторов.")
+    except ValueError:
+        bot.reply_to(message, "Пожалуйста, выберите другого пользователя - этот бог")

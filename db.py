@@ -24,7 +24,8 @@ def setup_database():
             stop_loss FLOAT,
             current_rate FLOAT,
             setup_image_path VARCHAR(255),
-            active BOOLEAN
+            active BOOLEAN,
+            direction VARCHAR(10)
         )
         ''')
         # Добавление администраторов
