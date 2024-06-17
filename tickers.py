@@ -47,8 +47,8 @@ def get_current_price(ticker_name):
     handler = TA_Handler(
         symbol=ticker_name,
         screener="crypto",  # Может быть изменено в зависимости от рынка: "crypto", "forex", "america"
-        exchange="BINANCE",  # Указать биржу, с которой нужно получать данные
-        interval=Interval.INTERVAL_1_MINUTE  # Интервал получения данных
+        exchange="BINANCE",  # BYBIT, BINANCE
+        interval=Interval.INTERVAL_1_MINUTE
     )
     try:
         analysis = handler.get_analysis()
@@ -57,26 +57,34 @@ def get_current_price(ticker_name):
         print("Ошибка при получении данных с TradingView:", str(e))
         return None
 
+
 def process_stop_loss(bot, message, ticker_name, entry_point, take_profit):
     stop_loss = float(message.text)
     current_rate = get_current_price(ticker_name)
     if current_rate is None:
         bot.send_message(message.chat.id, "Не удалось получить текущую стоимость тикера.")
         return
+
+    # Уведомляем пользователя о текущей стоимости
+    bot.send_message(message.chat.id, f"Текущая стоимость {ticker_name}: ${current_rate:.2f}")
+
+    # Предложим выбрать направление сделки
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("Long", callback_data=f"direction_Long_{ticker_name}_{entry_point}_{take_profit}_{stop_loss}_{current_rate}"))
     markup.add(types.InlineKeyboardButton("Short", callback_data=f"direction_Short_{ticker_name}_{entry_point}_{take_profit}_{stop_loss}_{current_rate}"))
     bot.send_message(message.chat.id, "Выберите направление:", reply_markup=markup)
 
+
 # def process_stop_loss(bot, message, ticker_name, entry_point, take_profit):
 #     stop_loss = float(message.text)
-#     bot.send_message(message.chat.id, "Введите текущую стоимость:")
-#     bot.register_next_step_handler(message, lambda message: process_current_rate(bot, message, ticker_name, entry_point, take_profit, stop_loss))
-
-# def process_current_rate(bot, message, ticker_name, entry_point, take_profit, stop_loss):
-#     current_rate = float(message.text)
-#     bot.send_message(message.chat.id, "Прикрепите изображение сетапа:")
-#     bot.register_next_step_handler(message, lambda message: process_setup_image(bot, message, ticker_name, entry_point, take_profit, stop_loss, current_rate))
+#     current_rate = get_current_price(ticker_name)
+#     if current_rate is None:
+#         bot.send_message(message.chat.id, "Не удалось получить текущую стоимость тикера.")
+#         return
+#     markup = types.InlineKeyboardMarkup()
+#     markup.add(types.InlineKeyboardButton("Long", callback_data=f"direction_Long_{ticker_name}_{entry_point}_{take_profit}_{stop_loss}_{current_rate}"))
+#     markup.add(types.InlineKeyboardButton("Short", callback_data=f"direction_Short_{ticker_name}_{entry_point}_{take_profit}_{stop_loss}_{current_rate}"))
+#     bot.send_message(message.chat.id, "Выберите направление:", reply_markup=markup)
 
 def process_current_rate(bot, message, ticker_name, entry_point, take_profit, stop_loss):
     current_rate = float(message.text)
