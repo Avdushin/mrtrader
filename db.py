@@ -1,6 +1,8 @@
 # db.py
 import mysql.connector
-from config import DB_CONFIG, ADMIN_IDS
+from datetime import datetime
+from config import DB_CONFIG, ADMIN_IDS,IMAGE_UPLOAD_PATH
+import os
 
 def get_db_connection():
     return mysql.connector.connect(**DB_CONFIG)
@@ -82,3 +84,19 @@ def get_admins():
         cursor.close()
         db.close()
 
+
+# tickers
+def add_new_ticker(ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path):
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("""
+        INSERT INTO tickers (ticker, entry_point, take_profit, stop_loss, current_rate, setup_image_path)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """, (ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path))
+        connection.commit()
+    except Exception as e:
+        print(f"Ошибка при добавлении данных: {e}")
+    finally:
+        cursor.close()
+        connection.close()

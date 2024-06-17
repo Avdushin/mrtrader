@@ -12,3 +12,5 @@ DB_CONFIG = {
     'database': os.getenv('DB_DATABASE')
 }
 ADMIN_IDS = [int(id.strip()) for id in os.getenv('ADMIN_IDS', '').split(',')]
+
+IMAGE_UPLOAD_PATH = 'setups'
