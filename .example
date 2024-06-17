@@ -1,0 +1,12 @@
+# Токен для Telegram Bot API
+TELEGRAM_TOKEN=bot_token
+
+# Данные для подключения к базе данных MySQL
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=pass
+DB_DATABASE=notbot
+
+# Администраторы по-умолчанию 
+# ADMIN_IDS=846704560,8467045
+ADMIN_IDS=ids
