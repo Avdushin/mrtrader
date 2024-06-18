@@ -16,7 +16,6 @@ def manage_tickers(bot, message):
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
 def handle_action(bot, call):
-    # Define your action handling logic here
     pass
 
 def initiate_add_ticker(bot, call):
@@ -73,18 +72,6 @@ def process_stop_loss(bot, message, ticker_name, entry_point, take_profit):
     markup.add(types.InlineKeyboardButton("Long", callback_data=f"direction_Long_{ticker_name}_{entry_point}_{take_profit}_{stop_loss}_{current_rate}"))
     markup.add(types.InlineKeyboardButton("Short", callback_data=f"direction_Short_{ticker_name}_{entry_point}_{take_profit}_{stop_loss}_{current_rate}"))
     bot.send_message(message.chat.id, "Выберите направление:", reply_markup=markup)
-
-
-# def process_stop_loss(bot, message, ticker_name, entry_point, take_profit):
-#     stop_loss = float(message.text)
-#     current_rate = get_current_price(ticker_name)
-#     if current_rate is None:
-#         bot.send_message(message.chat.id, "Не удалось получить текущую стоимость тикера.")
-#         return
-#     markup = types.InlineKeyboardMarkup()
-#     markup.add(types.InlineKeyboardButton("Long", callback_data=f"direction_Long_{ticker_name}_{entry_point}_{take_profit}_{stop_loss}_{current_rate}"))
-#     markup.add(types.InlineKeyboardButton("Short", callback_data=f"direction_Short_{ticker_name}_{entry_point}_{take_profit}_{stop_loss}_{current_rate}"))
-#     bot.send_message(message.chat.id, "Выберите направление:", reply_markup=markup)
 
 def process_current_rate(bot, message, ticker_name, entry_point, take_profit, stop_loss):
     current_rate = float(message.text)

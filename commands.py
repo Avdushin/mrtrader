@@ -1,10 +1,7 @@
 # commands.py
 from telebot import types
 from db import is_admin, add_admin, remove_admin, get_admins
-# import tickers
 from tickers import *
-# from tickers import manage_tickers, initiate_add_ticker, handle_action
-
 
 def register_handlers(bot):
     @bot.message_handler(commands=['start', 'help'])
@@ -67,17 +64,10 @@ def register_handlers(bot):
         bot.send_message(call.message.chat.id, f"Администратор {admin_id} удален.")
 
     """ TICKERS """
-    # @bot.message_handler(func=lambda message: message.text == "Тикеры")
-    # def ticker_handler(message):
-    #     if is_admin(message.from_user.id):
-    #         manage_tickers(bot, message)
-    #     else:
-    #         bot.send_message(message.chat.id, "У вас нет прав для управления тикерами.")
-
     @bot.message_handler(func=lambda message: message.text == "📈 Тикеры")
     def ticker_handler(message):
         if is_admin(message.from_user.id):
-            manage_tickers(bot, message)  # Указываем модуль перед функцией
+            manage_tickers(bot, message)
         else:
             bot.send_message(message.chat.id, "У вас нет прав для управления тикерами.")
 
@@ -89,8 +79,6 @@ def register_handlers(bot):
     @bot.callback_query_handler(func=lambda call: 'direction' in call.data)
     def handle_direction_selection(call):
         process_direction(bot, call)
-
-
 
 ### =============================================================================
 
