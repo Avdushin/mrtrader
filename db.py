@@ -20,11 +20,11 @@ def setup_database():
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS tickers (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            ticker VARCHAR(10),
-            entry_point FLOAT,
-            take_profit FLOAT,
-            stop_loss FLOAT,
-            current_rate FLOAT,
+            ticker VARCHAR(35),
+            entry_point DOUBLE,
+            take_profit DOUBLE,
+            stop_loss DOUBLE,
+            current_rate DOUBLE,
             setup_image_path VARCHAR(255),
             active BOOLEAN,
             direction VARCHAR(10)
