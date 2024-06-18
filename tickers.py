@@ -1,12 +1,14 @@
-# tikers.py
+# tickers.py
 from telebot import types
 from datetime import datetime
 from tradingview_ta import TA_Handler, Interval, Exchange
-import time, os
+import os
 import db
 import logging
 
 logging.basicConfig(level=logging.INFO)
+
+EXCHANGES = ['BINANCE', 'BYBIT', 'KRAKEN', 'COINBASE']
 
 def manage_tickers(bot, message):
     markup = types.InlineKeyboardMarkup()
@@ -15,143 +17,105 @@ def manage_tickers(bot, message):
     markup.row(types.InlineKeyboardButton("Удалить тикер", callback_data="delete_ticker"))
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
 
-def handle_action(bot, call):
-    pass
-
 def initiate_add_ticker(bot, call):
     bot.answer_callback_query(call.id)
     msg = bot.send_message(call.message.chat.id, "Введите имя тикера:")
-    bot.register_next_step_handler(msg, lambda message: process_ticker_name(bot, message))
+    bot.register_next_step_handler(msg, ask_for_exchange, bot)
 
-def process_ticker_name(bot, message):
-    chat_id = message.chat.id
-    ticker_name = message.text
-    logging.info(f"Ticker name entered by user: {ticker_name}")
-    bot.send_message(chat_id, "Введите точку входа:")
-    bot.register_next_step_handler(message, lambda message: process_entry_point(bot, message, ticker_name))
+def ask_for_exchange(message, bot):
+    ticker_name = message.text.strip().upper()
+    markup = types.InlineKeyboardMarkup()
+    for exchange in EXCHANGES:
+        markup.add(types.InlineKeyboardButton(exchange, callback_data=f"exchange_{exchange}_{ticker_name}"))
+    bot.send_message(message.chat.id, "Выберите биржу:", reply_markup=markup)
 
-
-def process_entry_point(bot, message, ticker_name):
-    print("Ticker name received:", ticker_name)
-    entry_point = float(message.text)
-    bot.send_message(message.chat.id, "Введите тейк-профит:")
-    bot.register_next_step_handler(message, lambda message: process_take_profit(bot, message, ticker_name, entry_point))
-
-def process_take_profit(bot, message, ticker_name, entry_point):
-    take_profit = float(message.text)
-    bot.send_message(message.chat.id, "Введите стоп-лосс:")
-    bot.register_next_step_handler(message, lambda message: process_stop_loss(bot, message, ticker_name, entry_point, take_profit))
-
-def get_current_price(ticker_name):
-    handler = TA_Handler(
-        symbol=ticker_name,
-        screener="crypto",  # Может быть изменено в зависимости от рынка: "crypto", "forex", "america"
-        exchange="BINANCE",  # BYBIT, BINANCE
-        interval=Interval.INTERVAL_1_MINUTE
-    )
-    try:
-        analysis = handler.get_analysis()
-        return analysis.indicators["close"]  # Получаем последнюю цену закрытия
-    except Exception as e:
-        print("Ошибка при получении данных с TradingView:", str(e))
-        return None
-
-
-def process_stop_loss(bot, message, ticker_name, entry_point, take_profit):
-    stop_loss = float(message.text)
-    current_rate = get_current_price(ticker_name)
+def handle_exchange_selection(bot, call):
+    _, exchange, ticker_name = call.data.split('_')
+    bot.answer_callback_query(call.id)
+    current_rate = get_current_price(ticker_name, exchange)
     if current_rate is None:
-        bot.send_message(message.chat.id, "Не удалось получить текущую стоимость тикера.")
+        bot.send_message(call.message.chat.id, "Не удалось получить текущую цену тикера, попробуйте другую биржу.")
         return
+    bot.send_message(call.message.chat.id, f"Текущая цена {ticker_name} на {exchange}: {current_rate}")
+    ask_for_direction(bot, call.message, ticker_name, exchange, current_rate)
 
-    # Уведомляем пользователя о текущей стоимости
-    bot.send_message(message.chat.id, f"Текущая стоимость {ticker_name}: ${current_rate:.2f}")
-
-    # Предложим выбрать направление сделки
+def ask_for_direction(bot, message, ticker_name, exchange, current_rate):
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("Long", callback_data=f"direction_Long_{ticker_name}_{entry_point}_{take_profit}_{stop_loss}_{current_rate}"))
-    markup.add(types.InlineKeyboardButton("Short", callback_data=f"direction_Short_{ticker_name}_{entry_point}_{take_profit}_{stop_loss}_{current_rate}"))
-    bot.send_message(message.chat.id, "Выберите направление:", reply_markup=markup)
-
-def process_current_rate(bot, message, ticker_name, entry_point, take_profit, stop_loss):
-    current_rate = float(message.text)
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("Long", callback_data=f"direction_Long_{ticker_name}_{entry_point}_{take_profit}_{stop_loss}_{current_rate}"))
-    markup.add(types.InlineKeyboardButton("Short", callback_data=f"direction_Short_{ticker_name}_{entry_point}_{take_profit}_{stop_loss}_{current_rate}"))
-    bot.send_message(message.chat.id, "Выберите направление:", reply_markup=markup)
+    markup.add(types.InlineKeyboardButton("Long", callback_data=f"direction_long_{ticker_name}_{exchange}_{current_rate}"),
+               types.InlineKeyboardButton("Short", callback_data=f"direction_short_{ticker_name}_{exchange}_{current_rate}"))
+    bot.send_message(message.chat.id, "Выберите направление сделки:", reply_markup=markup)
 
 def process_direction(bot, call):
-    data = call.data.split('_')
-    direction = data[1]
-    ticker_name = data[2]
-    entry_point = float(data[3])
-    take_profit = float(data[4])
-    stop_loss = float(data[5])
-    current_rate = float(data[6])
-    
-    bot.send_message(call.message.chat.id, "Прикрепите изображение сетапа:")
-    bot.register_next_step_handler(call.message, lambda message: process_setup_image(bot, message, ticker_name, entry_point, take_profit, stop_loss, current_rate, direction))
+    # Парсинг callback_data, чтобы извлечь нужные параметры
+    _, direction, ticker_name, exchange, current_rate_str = call.data.split('_')
+    try:
+        current_rate = float(current_rate_str)
+    except ValueError:
+        bot.send_message(call.message.chat.id, "Ошибка при конвертации текущего курса в число.")
+        return
 
-def process_setup_image(bot, message, ticker_name, entry_point, take_profit, stop_loss, current_rate, direction):
-    if message.content_type == 'photo':
-        # Получаем информацию о файле
-        file_id = message.photo[-1].file_id
-        file_info = bot.get_file(file_id)
-
-        # Загружаем файл
-        downloaded_file = bot.download_file(file_info.file_path)
-        
-        # Создаем папку setups если она не существует
-        directory = 'setups'
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-
-        # Формируем путь к файлу
-        # timestamp = int(time.time())
-        timestamp = datetime.now().strftime("%d.%m.%Y-%H-%M-%S")
-        file_path = f'{directory}/{ticker_name}_{timestamp}.jpg'
-        
-        # Сохраняем файл локально
-        with open(file_path, 'wb') as new_file:
-            new_file.write(downloaded_file)
-        
-        # Путь к файлу, который будет сохранен в базе данных
-        setup_image_path = file_path
-    else:
-        setup_image_path = None
-
-    # Добавляем запись о новом тикере в базу данных
-    db.add_new_ticker(ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction)
-    bot.send_message(message.chat.id, "Тикер успешно добавлен!")
+    # Передаем в следующий шаг все значения как есть, не пытаясь конвертировать направление сделки в число
+    bot.send_message(call.message.chat.id, f"Введите точку входа для {ticker_name} ({direction}):")
+    bot.register_next_step_handler(call.message, process_entry_point, bot, ticker_name, exchange, direction, current_rate)
 
 
-def process_setup_current(bot, message, ticker_name, entry_point, take_profit, stop_loss, current_rate, direction):
-    if message.content_markdown == 'поэтому':
-        photo_id = message.photo[-1].file_id
-        file_info = bot.get_file(photo_id)
-        downloaded_file = bot.download_file(file_info.file_path)
+def process_entry_point(message, bot, ticker_name, exchange, direction, current_rate):
+    try:
+        entry_point = float(message.text)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для точки входа.")
+        return  # Возврат в функцию для повторного ввода
+    bot.send_message(message.chat.id, "Введите значение тейк-профит:")
+    bot.register_next_step_handler(message, process_take_profit, bot, ticker_name, exchange, direction, entry_point, current_rate)
 
-        # Создаем папку, если она еще не существует
-        if not os.path.exists('setups'):
-            os.makedirs('setups')
+def process_take_profit(message, bot, ticker_name, exchange, direction, entry_point, current_rate):
+    try:
+        take_profit = float(message.text)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для тейк-профит.")
+        return  # Возврат в функцию для повторного ввода
+    bot.send_message(message.chat.id, "Введите значение стоп-лосс:")
+    bot.register_next_step_handler(message, process_stop_loss, bot, ticker_name, exchange, direction, entry_point, take_profit, current_rate)
 
-        # Формируем имя файла
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        filename = f"{ticker_name}_{timestamp}.jpg"
-        file_path = os.path.join('setups', filename)
+def process_stop_loss(message, bot, ticker_name, exchange, direction, entry_point, take_profit, current_rate):
+    try:
+        stop_loss = float(message.text)
+    except ValueError:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для стоп-лосс.")
+        return  # Возврат в функцию для повторного ввода
+    bot.send_message(message.chat.id, "Прикрепите изображение сетапа или отправьте URL:")
+    bot.register_next_step_handler(message, finalize_setup, bot, ticker_name, exchange, direction, entry_point, take_profit, stop_loss, current_rate)
 
-        # Сохраняем файл
-        with open(file_path, 'wb') as new_file:
-            new_file.write(downloaded_file)
 
-        # Обновляем путь файла для сохранения в базе данных
-        setup_image_path = file_path
-    else:
-        setup_image_path = None
+def finalize_setup(message, bot, ticker_name, exchange, direction, entry_point, take_profit, stop_loss, current_rate):
+    setup_image_path = message.text if message.content_type == 'text' else save_photo(bot, message.photo[-1].file_id)
+    try:
+        db.add_new_ticker(ticker_name, direction, entry_point, take_profit, stop_loss, current_rate, setup_image_path)
+        bot.send_message(message.chat.id, "Тикер успешно добавлен в ваш портфель!")
+        print(f"Данные тикера для добавления в БД:  \n Название тикера: {ticker_name} \n Направление сделки: {direction} \n Точка входа: {entry_point} \n Тейк-профит: {take_profit} \n Стоп-лосс: {stop_loss} \n Текущий курс {current_rate} \n  Сетап: {setup_image_path}")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Ошибка при добавлении данных: {e}")
 
-    db.add_new_ticker(ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction)
-    bot.send_message(message.chat.id, "Тикер успешно добавлен!")
+def save_photo(bot, file_id):
+    file_info = bot.get_file(file_id)
+    downloaded_file = bot.download_file(file_info.file_path)
+    directory = 'setups'
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    timestamp = datetime.now().strftime("%d.%m.%Y-%H-%M-%S")
+    file_path = f'{directory}/{timestamp}.jpg'
+    with open(file_path, 'wb') as new_file:
+        new_file.write(downloaded_file)
+    return file_path
 
+def get_current_price(ticker_name, exchange):
+    handler = TA_Handler(symbol=ticker_name, screener="crypto", exchange=exchange, interval=Interval.INTERVAL_1_MINUTE)
+    try:
+        analysis = handler.get_analysis()
+        return analysis.indicators["close"]
+    except Exception as e:
+        logging.error(f"Error retrieving data from TradingView for {ticker_name} on {exchange}: {e}")
+        return None
 
 def delete_ticker(bot, call):
     chat_id = call.message.chat.id
