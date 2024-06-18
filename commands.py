@@ -71,18 +71,33 @@ def register_handlers(bot):
         else:
             bot.send_message(message.chat.id, "У вас нет прав для управления тикерами.")
 
-    
+    # Добавление тикера
     @bot.callback_query_handler(func=lambda call: call.data == 'add_ticker')
     def handle_add_ticker(call):
         initiate_add_ticker(bot, call)
     
+    # Выбор направления торговли
     @bot.callback_query_handler(func=lambda call: 'direction' in call.data)
     def handle_direction_selection(call):
         process_direction(bot, call)
 
+#   # Выбор биржи для курса
     @bot.callback_query_handler(func=lambda call: 'exchange' in call.data)
     def handle_exchange_selection_h(call):
         handle_exchange_selection(bot, call)
+    
+    @bot.callback_query_handler(func=lambda call: call.data == "show_tickers")
+    def handle_show_tickers(call):
+        show_ticker_list(bot, call.message)
+
+    # Получение тикеров
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("ticker_"))
+    def handle_ticker_selection(call):
+        show_ticker_info(bot, call)
+    # Информация о тикерах
+    @bot.message_handler(commands=['tickers'], func=lambda message: message.text == "Список тикеров")
+    def handle_tickers_command(message):
+        show_ticker_list(bot, message)
 
 ### =============================================================================
 

@@ -12,6 +12,7 @@ EXCHANGES = ['BINANCE', 'BYBIT', 'KRAKEN', 'COINBASE']
 
 def manage_tickers(bot, message):
     markup = types.InlineKeyboardMarkup()
+    markup.row(types.InlineKeyboardButton("Список тикеров", callback_data="show_tickers"))
     markup.row(types.InlineKeyboardButton("Добавить тикер", callback_data="add_ticker"))
     markup.row(types.InlineKeyboardButton("Редактировать тикер", callback_data="edit_ticker"))
     markup.row(types.InlineKeyboardButton("Удалить тикер", callback_data="delete_ticker"))
@@ -129,3 +130,38 @@ def confirm_delete_ticker(bot, call):
     ticker_id = int(call.data.split("_")[2])
     db.delete_ticker(ticker_id)
     bot.answer_callback_query(call.id, "Тикер удален!")
+
+
+# Список тикеров
+def show_ticker_list(bot, message):
+    tickers = db.get_all_tickers()
+    markup = types.InlineKeyboardMarkup()
+    for ticker, id in tickers:
+        markup.add(types.InlineKeyboardButton(ticker, callback_data=f"ticker_{id}"))
+    bot.send_message(message.chat.id, "Выберите тикер:", reply_markup=markup)
+
+# Получение подробной информации о тикере
+def show_ticker_info(bot, call):
+    ticker_id = call.data.split('_')[1]
+    connection = db.get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("SELECT * FROM tickers WHERE id = %s", (ticker_id,))
+        ticker = cursor.fetchone()
+        if ticker:
+            info = (f"Ticker: {ticker[1]}\n"
+                    f"Entry Point: {ticker[2]}\n"
+                    f"Take Profit: {ticker[3]}\n"
+                    f"Stop Loss: {ticker[4]}\n"
+                    f"Current Rate: {ticker[5]}\n"
+                    f"Setup Image: {ticker[6]}\n"
+                    f"Direction: {ticker[8]}")
+            bot.send_message(call.message.chat.id, info)
+            # Отправка графика (примерно, зависит от вашей реализации)
+            if ticker[6].startswith('http'):
+                bot.send_photo(call.message.chat.id, ticker[6])
+            else:
+                bot.send_photo(call.message.chat.id, open(ticker[6], 'rb'))
+    finally:
+        cursor.close()
+        connection.close()

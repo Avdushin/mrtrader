@@ -84,6 +84,8 @@ def get_admins():
         cursor.close()
         db.close()
 
+""" Тикеры """
+
 def add_new_ticker(ticker_name, direction, entry_point, take_profit, stop_loss, current_rate, setup_image_path):
     entry_point = round(entry_point, 4)
     take_profit = round(take_profit, 4)
@@ -100,6 +102,17 @@ def add_new_ticker(ticker_name, direction, entry_point, take_profit, stop_loss, 
         connection.commit()
     except mysql.connector.Error as e:
         print(f"Error inserting data: {e}")
+    finally:
+        cursor.close()
+        connection.close()
+
+def get_all_tickers():
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("SELECT ticker, id FROM tickers")
+        tickers = cursor.fetchall()
+        return tickers
     finally:
         cursor.close()
         connection.close()
