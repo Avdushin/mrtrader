@@ -228,26 +228,26 @@ def update_ticker_value(bot, message, ticker_id, field):
 # Monitoring =================================================================
 def monitor_tickers(bot):
     scheduler = BackgroundScheduler()
-    scheduler.add_job(func=check_entry_points, trigger="interval", seconds=1, args=[bot])
+    scheduler.add_job(func=lambda: check_entry_points(bot), trigger="interval", seconds=1)
     scheduler.start()
+    logging.info("Scheduler started. Monitoring entry points.")
 
 def check_entry_points(bot):
+    connection = db.get_db_connection()
+    cursor = connection.cursor()
     try:
-        connection = db.get_db_connection()
-        cursor = connection.cursor()
-        cursor.execute("SELECT id, ticker, entry_point FROM tickers")
+        cursor.execute("SELECT id, ticker, entry_point, current_rate FROM tickers WHERE active IS TRUE")
         tickers = cursor.fetchall()
         for ticker in tickers:
-            ticker_id, ticker_name, entry_point = ticker
-            current_rate = get_current_price(ticker_name, 'BINANCE')  # Предполагаем, что все тикеры на Binance
+            ticker_id, ticker_name, entry_point, current_rate = ticker
+            current_rate = get_current_price(ticker_name, 'BINANCE')
             if current_rate:
-                percent_difference = abs(current_rate - entry_point) / entry_point
-                # Проверяем, находится ли текущая цена в пределах 2% от точки входа
-                if percent_difference < 0.02:
-                    message_text = f"🚨 {ticker_name} близок к точке входа: {entry_point} (текущая цена: {current_rate})"
-                    bot.send_message(chat_id=admin_chat_id, text=message_text)  # Отправка сообщения администратору
+                if abs(current_rate - entry_point) / entry_point < 0.01:  # проверяем, что цена в пределах 1%
+                    message = f"🚨 {ticker_name} приближается к точке входа: {entry_point} (текущая цена: {current_rate})"
+                    bot.send_message(chat_id=config.ADMIN_CHAT_ID, text=message)
+                    logging.info(f"Alert sent for {ticker_name}: {message}")
     except Exception as e:
-        logging.error(f"Ошибка при мониторинге тикеров: {str(e)}")
+        logging.error(f"Error while monitoring tickers: {e}")
     finally:
         cursor.close()
         connection.close()
