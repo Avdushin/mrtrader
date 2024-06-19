@@ -246,6 +246,15 @@ def start_monitoring(bot):
     scheduler.add_job(monitor_prices, 'interval', seconds=1)
     scheduler.start()
 
+def send_alert(message_text):
+    for chat_id in config.ADMIN_CHAT_IDS:
+        try:
+            global_bot.send_message(chat_id=chat_id, text=message_text)
+            logging.info(f"Sent alert to {chat_id}: {message_text}")
+        except Exception as e:
+            logging.error(f"Failed to send alert to {chat_id}: {str(e)}")
+
+
 def monitor_prices():
     logging.info("Starting price monitoring...")
     connection = db.get_db_connection()
@@ -264,14 +273,13 @@ def monitor_prices():
                 # Проверка условия приближения
                 if abs(percent_difference) <= 5 and not alert_sent[ticker_id]['approach']:
                     message_text = f"🚨 {ticker_name} приближается к точке входа: {entry_point} (текущая цена: {current_rate})"
-                    global_bot.send_message(chat_id=config.ADMIN_CHAT_ID, text=message_text)
-                    logging.info(f"Sent alert for approaching: {message_text}")
-                    alert_sent[ticker_id]['approach'] = True  # Пометка, что уведомление отправлено
+                    send_alert(message_text)
+                    alert_sent[ticker_id]['approach'] = True
 
                 # Проверка условия пересечения
                 if current_rate == entry_point and not alert_sent[ticker_id]['cross']:
                     message_text = f"✅ {ticker_name} достиг точки входа: {entry_point} (текущая цена: {current_rate})"
-                    global_bot.send_message(chat_id=config.ADMIN_CHAT_ID, text=message_text)
+                    send_alert(message_text)
                     logging.info(f"Sent alert for crossing: {message_text}")
                     alert_sent[ticker_id]['cross'] = True  # Пометка, что уведомление отправлено
 
