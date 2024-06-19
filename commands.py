@@ -99,6 +99,22 @@ def register_handlers(bot):
     def handle_tickers_command(message):
         show_ticker_list(bot, message)
 
+
+    # Удаление тикера
+    @bot.callback_query_handler(func=lambda call: call.data == "delete_ticker")
+    def handle_delete_ticker(call):
+        delete_ticker(bot, call)
+    
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("del_"))
+    def handle_confirm_delete_ticker(call):
+        confirm_delete_ticker(bot, call)
+
+    # Отмена удаления тикера
+    @bot.callback_query_handler(func=lambda call: call.data == "cancel_delete")
+    def handle_cancel_delete(bot, call):
+        bot.answer_callback_query(call.id, "Удаление отменено.")
+        bot.edit_message_text("Удаление тикера отменено.", call.message.chat.id, call.message.message_id)
+
 ### =============================================================================
 
 def process_add_admin(message, bot):

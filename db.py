@@ -86,6 +86,7 @@ def get_admins():
 
 """ Тикеры """
 
+# Добавление тикера
 def add_new_ticker(ticker_name, direction, entry_point, take_profit, stop_loss, current_rate, setup_image_path):
     entry_point = round(entry_point, 4)
     take_profit = round(take_profit, 4)
@@ -105,7 +106,7 @@ def add_new_ticker(ticker_name, direction, entry_point, take_profit, stop_loss, 
     finally:
         cursor.close()
         connection.close()
-
+# Список всех тикеров
 def get_all_tickers():
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -113,6 +114,26 @@ def get_all_tickers():
         cursor.execute("SELECT ticker, id FROM tickers")
         tickers = cursor.fetchall()
         return tickers
+    finally:
+        cursor.close()
+        connection.close()
+
+# Удаление тикера
+def delete_ticker(ticker_id):
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    try:
+        # First, fetch the path of the setup image for the ticker
+        cursor.execute("SELECT setup_image_path FROM tickers WHERE id = %s", (ticker_id,))
+        setup_image_path = cursor.fetchone()
+        if setup_image_path and os.path.exists(setup_image_path[0]):
+            os.remove(setup_image_path[0])  # Delete the file if it exists
+
+        # Then, delete the ticker from the database
+        cursor.execute("DELETE FROM tickers WHERE id = %s", (ticker_id,))
+        connection.commit()
+    except mysql.connector.Error as e:
+        print(f"Error deleting ticker: {e}")
     finally:
         cursor.close()
         connection.close()

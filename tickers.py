@@ -119,20 +119,6 @@ def get_current_price(ticker_name, exchange):
         logging.error(f"Error retrieving data from TradingView for {ticker_name} on {exchange}: {e}")
         return None
 
-def delete_ticker(bot, call):
-    chat_id = call.message.chat.id
-    tickers = db.get_all_tickers()
-    markup = types.InlineKeyboardMarkup()
-    for ticker in tickers:
-        markup.add(types.InlineKeyboardButton(ticker['name'], callback_data=f"del_{ticker['id']}"))
-    bot.send_message(chat_id, "Выберите тикер для удаления:", reply_markup=markup)
-
-def confirm_delete_ticker(bot, call):
-    ticker_id = int(call.data.split("_")[2])
-    db.delete_ticker(ticker_id)
-    bot.answer_callback_query(call.id, "Тикер удален!")
-
-
 # Список тикеров
 def show_ticker_list(bot, message):
     tickers = db.get_all_tickers()
@@ -177,126 +163,20 @@ def show_ticker_info(bot, call):
         cursor.close()
         connection.close()
 
+# Удаление тикеров
+def delete_ticker(bot, call):
+    tickers = db.get_all_tickers()
+    markup = types.InlineKeyboardMarkup()
+    for ticker in tickers:
+        markup.add(types.InlineKeyboardButton(ticker[0], callback_data=f"del_{ticker[1]}"))  # Название тикера и его ID
+    bot.send_message(call.message.chat.id, "Выберите тикер для удаления:", reply_markup=markup)
 
-# def show_ticker_info(bot, call):
-#     ticker_id = call.data.split('_')[1]
-#     connection = db.get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("SELECT * FROM tickers WHERE id = %s", (ticker_id,))
-#         ticker = cursor.fetchone()
-#         if ticker:
-#             try:
-#                 df = create_financial_chart(ticker[1], "BINANCE")
-#                 chart_path = create_financial_chart(ticker[1], df)
-#                 with open(chart_path, 'rb') as photo:
-#                     bot.send_photo(call.message.chat.id, photo)
-#                 os.remove(chart_path)
-#             except Exception as e:
-#                 bot.send_message(call.message.chat.id, f"Failed to create chart: {str(e)}")
-            
-#             info = (
-#                 f"<b>Ticker:</b> <code>{ticker[1]}</code>\n"
-#                 f"<b>Entry Point:</b> <code>{ticker[2]}</code>\n"
-#                 f"<b>Take Profit:</b> <code>{ticker[3]}</code>\n"
-#                 f"<b>Stop Loss:</b> <code>{ticker[4]}</code>\n"
-#                 f"<b>Current Rate:</b> <code>{ticker[5]}</code>\n"
-#                 f"<b>Setup Image:</b> <code>{ticker[6]}</code>\n"
-#                 f"<b>Direction:</b> <code>{ticker[8]}</code>"
-#             )
-#             bot.send_message(call.message.chat.id, info, parse_mode="HTML")
-#             if ticker[6] and os.path.exists(ticker[6]):
-#                 bot.send_photo(call.message.chat.id, open(ticker[6], 'rb'))
-#     except Exception as e:
-#         bot.send_message(call.message.chat.id, f"Error retrieving ticker data: {str(e)}")
-#     finally:
-#         cursor.close()
-#         connection.close()
-
-
-# def show_ticker_info(bot, call):
-#     ticker_id = call.data.split('_')[1]
-#     connection = db.get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("SELECT * FROM tickers WHERE id = %s", (ticker_id,))
-#         ticker = cursor.fetchone()
-#         if ticker:
-#             info = (
-#                 f"<b>Ticker:</b> {ticker[1]}\n"
-#                 f"<b>Entry Point:</b> {ticker[2]}\n"
-#                 f"<b>Take Profit:</b> {ticker[3]}\n"
-#                 f"<b>Stop Loss:</b> {ticker[4]}\n"
-#                 f"<b>Current Rate:</b> {ticker[5]}\n"
-#                 f"<b>Setup Image:</b> {ticker[6]}\n"
-#                 f"<b>Direction:</b> {ticker[8]}"
-#             )
-#             bot.send_message(call.message.chat.id, info, parse_mode="HTML")
-#             if ticker[6] and os.path.exists(ticker[6]):
-#                 bot.send_photo(call.message.chat.id, open(ticker[6], 'rb'))
-            
-#             # Generate and send the screenshot of the chart
-#             screenshot_path = create_chart(ticker[1])  # Assume ticker[1] is the ticker symbol
-#             with open(screenshot_path, 'rb') as photo:
-#                 bot.send_photo(call.message.chat.id, photo)
-#             os.remove(screenshot_path)  # Clean up after sending
-#     finally:
-#         cursor.close()
-#         connection.close()
-
-
-# def show_ticker_info(bot, call):
-#     ticker_id = call.data.split('_')[1]
-#     connection = db.get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("SELECT * FROM tickers WHERE id = %s", (ticker_id,))
-#         ticker = cursor.fetchone()
-#         if ticker:
-#             info = (f"**Ticker:** {ticker[1]}\n"
-#                     f"**Entry Point:** {ticker[2]}\n"
-#                     f"**Take Profit:** {ticker[3]}\n"
-#                     f"**Stop Loss:** {ticker[4]}\n"
-#                     f"**Current Rate:** {ticker[5]}\n"
-#                     f"**Setup Image:** {ticker[6]}\n"
-#                     f"**Direction:** {ticker[8]}")
-#             bot.send_message(call.message.chat.id, info, parse_mode="Markdown")
-#             if ticker[6] and os.path.exists(ticker[6]):
-#                 bot.send_photo(call.message.chat.id, open(ticker[6], 'rb'))
-
-#             # Generate and send the screenshot of the chart
-#             screenshot_path = capture_trading_view_chart(ticker[1])  # Assume ticker[1] is the ticker symbol
-#             with open(screenshot_path, 'rb') as photo:
-#                 bot.send_photo(call.message.chat.id, photo)
-#             os.remove(screenshot_path)  # Clean up after sending
-#     finally:
-#         cursor.close()
-#         connection.close()
-
-
-
-# Получение подробной информации о тикере
-# def show_ticker_info(bot, call):
-#     ticker_id = call.data.split('_')[1]
-#     connection = db.get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("SELECT * FROM tickers WHERE id = %s", (ticker_id,))
-#         ticker = cursor.fetchone()
-#         if ticker:
-#             info = (f"Ticker: {ticker[1]}\n"
-#                     f"Entry Point: {ticker[2]}\n"
-#                     f"Take Profit: {ticker[3]}\n"
-#                     f"Stop Loss: {ticker[4]}\n"
-#                     f"Current Rate: {ticker[5]}\n"
-#                     f"Setup Image: {ticker[6]}\n"
-#                     f"Direction: {ticker[8]}")
-#             bot.send_message(call.message.chat.id, info)
-#             # Отправка графика (примерно, зависит от вашей реализации)
-#             if ticker[6].startswith('http'):
-#                 bot.send_photo(call.message.chat.id, ticker[6])
-#             else:
-#                 bot.send_photo(call.message.chat.id, open(ticker[6], 'rb'))
-#     finally:
-#         cursor.close()
-#         connection.close()
+def confirm_delete_ticker(bot, call):
+    parts = call.data.split("_")
+    if len(parts) < 2:
+        bot.send_message(call.message.chat.id, "Произошла ошибка при обработке вашего запроса.")
+        return
+    ticker_id = int(parts[1])
+    db.delete_ticker(ticker_id)
+    bot.answer_callback_query(call.id, "Тикер удален!")
+    bot.edit_message_text("Тикер успешно удален.", call.message.chat.id, call.message.message_id)
