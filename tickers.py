@@ -2,10 +2,11 @@
 from telebot import types
 from datetime import datetime
 from tradingview_ta import TA_Handler, Interval, Exchange
-import config
+from admin import is_admin
 from apscheduler.schedulers.background import BackgroundScheduler
 from pytz import utc
 from utils import *
+import config
 import os
 import db
 import logging
@@ -20,11 +21,17 @@ EXCHANGES = ['BINANCE', 'BYBIT', 'KRAKEN', 'COINBASE']
 
 def manage_tickers(bot, message):
     markup = types.InlineKeyboardMarkup()
+    # Все пользователи видят кнопку "Список тикеров"
     markup.row(types.InlineKeyboardButton("Список тикеров", callback_data="show_tickers"))
-    markup.row(types.InlineKeyboardButton("Добавить тикер", callback_data="add_ticker"))
-    markup.row(types.InlineKeyboardButton("Редактировать тикер", callback_data="edit_ticker"))
-    markup.row(types.InlineKeyboardButton("Удалить тикер", callback_data="delete_ticker"))
+    
+    # Только администраторы видят остальные кнопки
+    if is_admin(message.from_user.id):
+        markup.row(types.InlineKeyboardButton("Добавить тикер", callback_data="add_ticker"))
+        markup.row(types.InlineKeyboardButton("Редактировать тикер", callback_data="edit_ticker"))
+        markup.row(types.InlineKeyboardButton("Удалить тикер", callback_data="delete_ticker"))
+    
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
+
 
 def initiate_add_ticker(bot, call):
     bot.answer_callback_query(call.id)
@@ -290,10 +297,10 @@ def monitor_prices():
         connection.close()
 
 # show tickres under monitoring
-def show_ticker_list(bot, message):
-    tickers = db.get_all_tickers()
-    if not tickers:
-        bot.send_message(message.chat.id, "В данный момент нет активных тикеров для мониторинга.")
-    else:
-        reply = "Список мониторируемых тикеров:\n" + "\n".join([f"{ticker[0]}" for ticker in tickers])
-        bot.send_message(message.chat.id, reply)
+# def show_ticker_list(bot, message):
+#     tickers = db.get_all_tickers()
+#     if not tickers:
+#         bot.send_message(message.chat.id, "В данный момент нет активных тикеров для мониторинга.")
+#     else:
+#         reply = "Список мониторируемых тикеров:\n" + "\n".join([f"{ticker[0]}" for ticker in tickers])
+#         bot.send_message(message.chat.id, reply)

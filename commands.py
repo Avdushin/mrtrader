@@ -2,22 +2,34 @@
 from telebot import types
 from db import is_admin, add_admin, remove_admin, get_admins
 from tickers import *
+from admin import is_admin
 
 def register_handlers(bot):
     @bot.message_handler(commands=['start', 'help'])
+    @bot.message_handler(commands=['start', 'help'])
     def send_welcome(message):
         if is_admin(message.from_user.id):
-            # Показываем административную клавиатуру
+            # Административная клавиатура
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.row(types.KeyboardButton("📈 Тикеры"), types.KeyboardButton("⚙️ Панель администратора"))
             bot.reply_to(message, "Привет, администратор! Выберите действие:", reply_markup=markup)
         else:
-            simple_markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            simple_markup.row(types.KeyboardButton("📈 Тикеры"), types.KeyboardButton("ℹ️ Помощь"))
+            # Клавиатура для обычных пользователей
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.row(types.KeyboardButton("📈 Тикеры"), types.KeyboardButton("ℹ️ Помощь"))
             bot.reply_to(message, """Привет!
 Я Mr. Trader - бот, который поможет торговать тебе и заработать мильоны тысяч зелёных бумажек!
 Мои создатели просят меня мониторить различные токены, а я в свою очередь делюсь оперативной информацией по всем точкам входа с тобой!
-Уда.чной торговли!""", reply_markup=simple_markup)
+Уда.чной торговли!""", reply_markup=markup)
+
+
+    @bot.message_handler(func=lambda message: message.text == "📈 Тикеры")
+    def ticker_handler(message):
+        if is_admin(message.from_user.id):
+            manage_tickers(bot, message)  # Полный доступ для администраторов
+        else:
+            manage_tickers(bot, message)  # Только просмотр списка тикеров для обычных пользователей
+
 
     @bot.message_handler(func=lambda message: message.text == "⚙️ Панель администратора")
     def admin_panel(message):
@@ -148,6 +160,12 @@ def register_handlers(bot):
         print("\n\nChat ID:\n\n", message.chat.id)
         bot.reply_to(message, f"Chat ID: {message.chat.id}")
 
+    @bot.message_handler(func=lambda message: message.text == "ℹ️ Помощь")
+    def ticker_handler(message):
+        if is_admin(message.from_user.id):
+            bot.send_message(message.chat.id, "Дурик, ты и так всё знаешь =)")
+        else:
+            bot.send_message(message.chat.id, "Если у вас появились вопросы свяжитесь с автором бота: @Itdobro")
 
 ### =============================================================================
 
