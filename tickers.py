@@ -385,10 +385,10 @@ def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop
     if current_rate == entry_point:
         message_text += f"✅ {ticker_name} достиг точки входа на {exchange}.\n"
     if current_rate >= take_profit:
-        message_text += f"🎉 {ticker_name} достиг или превысил уровень тейк-профита на {exchange}.\n"
+        message_text += f"🎉 {ticker_name} достиг уровеня тейк-профита: ${take_profit}.\n"
         db.update_ticker_active(ticker_id, False)
     if current_rate <= stop_loss:
-        message_text += f"🛑 {ticker_name} достиг или опустился ниже уровня стоп-лосса на {exchange}.\n"
+        message_text += f"🛑 {ticker_name} достиг уровня стоп-лосса на {stop_loss}.\n"
         db.update_ticker_active(ticker_id, False)
     return message_text
 
