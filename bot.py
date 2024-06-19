@@ -14,5 +14,5 @@ def run_bot():
 if __name__ == "__main__":
     db.setup_database()
     commands.register_handlers(bot)
-    threading.Thread(target=start_monitoring).start()
+    threading.Thread(target=start_monitoring, args=(bot,)).start()
     run_bot()

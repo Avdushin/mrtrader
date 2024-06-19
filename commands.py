@@ -137,6 +137,16 @@ def register_handlers(bot):
         bot.answer_callback_query(call.id, "Редактирование отменено.")
         bot.send_message(call.message.chat.id, "Редактирование отменено. Возвращаемся в главное меню.")
         manage_tickers(bot, call.message)
+    
+    # Tickers monitoring
+    @bot.message_handler(commands=['show_tickers'])
+    def send_tickers_list(message):
+        show_ticker_list(bot, message)
+
+    @bot.message_handler(commands=['chat_id'])
+    def print_chat_id(message):
+        print("\n\nChat ID:\n\n", message.chat.id)
+        bot.reply_to(message, f"Chat ID: {message.chat.id}")
 
 
 ### =============================================================================

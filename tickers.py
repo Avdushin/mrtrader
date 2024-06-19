@@ -13,7 +13,9 @@ import logging
 # Настройка логгирования для APScheduler
 logging.basicConfig(level=logging.INFO)
 logging.getLogger('apscheduler').setLevel(logging.DEBUG)
+global_bot = None
 
+alert_sent = {}  # Словарь для отслеживания отправленных уведомлений
 EXCHANGES = ['BINANCE', 'BYBIT', 'KRAKEN', 'COINBASE']
 
 def manage_tickers(bot, message):
@@ -115,6 +117,14 @@ def save_photo(bot, file_id):
         new_file.write(downloaded_file)
     return file_path
 
+# def get_current_price(ticker_name, exchange):
+#     handler = TA_Handler(symbol=ticker_name, screener="crypto", exchange=exchange, interval=Interval.INTERVAL_1_MINUTE)
+#     try:
+#         analysis = handler.get_analysis()
+#         return analysis.indicators["close"]
+#     except Exception as e:
+#         logging.error(f"Error retrieving data from TradingView for {ticker_name} on {exchange}: {e}")
+#         return None
 def get_current_price(ticker_name, exchange):
     handler = TA_Handler(symbol=ticker_name, screener="crypto", exchange=exchange, interval=Interval.INTERVAL_1_MINUTE)
     try:
@@ -123,6 +133,7 @@ def get_current_price(ticker_name, exchange):
     except Exception as e:
         logging.error(f"Error retrieving data from TradingView for {ticker_name} on {exchange}: {e}")
         return None
+
 
 # Список тикеров
 def show_ticker_list(bot, message):
@@ -228,32 +239,53 @@ def update_ticker_value(bot, message, ticker_id, field):
         bot.send_message(message.chat.id, f"Ошибка при обновлении данных: {e}")
 
 # Monitoring =================================================================
+def start_monitoring(bot):
+    global global_bot
+    global_bot = bot
+    scheduler = BackgroundScheduler(timezone=utc)
+    scheduler.add_job(monitor_prices, 'interval', seconds=1)
+    scheduler.start()
+
 def monitor_prices():
     logging.info("Starting price monitoring...")
     connection = db.get_db_connection()
     cursor = connection.cursor()
     try:
-        cursor.execute("SELECT id, ticker, entry_point FROM tickers")
-        # cursor.execute("SELECT id, ticker, entry_point FROM tickers WHERE active=TRUE")
+        cursor.execute("SELECT id, ticker, entry_point FROM tickers WHERE active=1")
         tickers = cursor.fetchall()
         for ticker in tickers:
             ticker_id, ticker_name, entry_point = ticker
+            if ticker_id not in alert_sent:
+                alert_sent[ticker_id] = {'approach': False, 'cross': False}
             current_rate = get_current_price(ticker_name, 'BINANCE')
-            if current_rate is not None:
-                percent_difference = abs(current_rate - entry_point) / entry_point
-                logging.info(f"Checked {ticker_name}: current rate {current_rate}, entry point {entry_point}")
-                # if percent_difference <= 0.01:
-                if percent_difference <= 0.05:
+            if current_rate:
+                percent_difference = (current_rate - entry_point) / entry_point * 100
+
+                # Проверка условия приближения
+                if abs(percent_difference) <= 5 and not alert_sent[ticker_id]['approach']:
                     message_text = f"🚨 {ticker_name} приближается к точке входа: {entry_point} (текущая цена: {current_rate})"
-                    bot.send_message(chat_id=config.ADMIN_CHAT_ID, text=message_text)
-                    logging.info(f"Sent alert for {ticker_name}: {message_text}")
+                    global_bot.send_message(chat_id=config.ADMIN_CHAT_ID, text=message_text)
+                    logging.info(f"Sent alert for approaching: {message_text}")
+                    alert_sent[ticker_id]['approach'] = True  # Пометка, что уведомление отправлено
+
+                # Проверка условия пересечения
+                if current_rate == entry_point and not alert_sent[ticker_id]['cross']:
+                    message_text = f"✅ {ticker_name} достиг точки входа: {entry_point} (текущая цена: {current_rate})"
+                    global_bot.send_message(chat_id=config.ADMIN_CHAT_ID, text=message_text)
+                    logging.info(f"Sent alert for crossing: {message_text}")
+                    alert_sent[ticker_id]['cross'] = True  # Пометка, что уведомление отправлено
+
     except Exception as e:
         logging.error(f"Error during price monitoring: {str(e)}")
     finally:
         cursor.close()
         connection.close()
 
-def start_monitoring():
-    scheduler = BackgroundScheduler(timezone=utc)
-    scheduler.add_job(monitor_prices, 'interval', seconds=1)
-    scheduler.start()
+# show tickres under monitoring
+def show_ticker_list(bot, message):
+    tickers = db.get_all_tickers()
+    if not tickers:
+        bot.send_message(message.chat.id, "В данный момент нет активных тикеров для мониторинга.")
+    else:
+        reply = "Список мониторируемых тикеров:\n" + "\n".join([f"{ticker[0]}" for ticker in tickers])
+        bot.send_message(message.chat.id, reply)
