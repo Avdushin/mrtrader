@@ -17,7 +17,7 @@ logging.getLogger('apscheduler').setLevel(logging.DEBUG)
 global_bot = None
 
 alert_sent = {}  # Словарь для отслеживания отправленных уведомлений
-EXCHANGES = ['BINANCE', 'BYBIT', 'KRAKEN', 'COINBASE']
+EXCHANGES = ['BINANCE', 'BYBIT', 'BINGX', 'KRAKEN', 'COINBASE']
 
 def manage_tickers(bot, message):
     markup = types.InlineKeyboardMarkup()
