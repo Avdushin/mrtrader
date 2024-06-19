@@ -180,3 +180,44 @@ def confirm_delete_ticker(bot, call):
     db.delete_ticker(ticker_id)
     bot.answer_callback_query(call.id, "Тикер удален!")
     bot.edit_message_text("Тикер успешно удален.", call.message.chat.id, call.message.message_id)
+
+
+# Редактировать тикер
+# Функция для отображения списка тикеров при запросе на редактирование
+def edit_ticker(bot, call):
+    tickers = db.get_all_tickers()
+    markup = types.InlineKeyboardMarkup()
+    for ticker in tickers:
+        markup.add(types.InlineKeyboardButton(ticker[0], callback_data=f"edit_{ticker[1]}"))  # Название тикера и его ID
+    bot.send_message(call.message.chat.id, "Выберите тикер для редактирования:", reply_markup=markup)
+
+# Функция для выбора поля, которое пользователь хочет отредактировать
+def select_field_to_edit(bot, call):
+    ticker_id = call.data.split("_")[1]
+    markup = types.InlineKeyboardMarkup()
+    fields = ["entry_point", "take_profit", "stop_loss", "current_rate", "active", "direction"]
+    for field in fields:
+        markup.add(types.InlineKeyboardButton(field.replace("_", " ").title(), callback_data=f"editfield_{ticker_id}_{field}"))
+    bot.send_message(call.message.chat.id, "Выберите поле для редактирования:", reply_markup=markup)
+
+# Функция для получения нового значения от пользователя
+def get_new_value(bot, call):
+    parts = call.data.split('_', 2)
+    if len(parts) < 3:
+        bot.send_message(call.message.chat.id, "Произошла ошибка при обработке вашего запроса.")
+        return
+    _, ticker_id, field = parts
+    msg = f"Введите новое значение для {field.replace('_', ' ').title()}:"
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_edit"))
+    bot.send_message(call.message.chat.id, msg, reply_markup=markup)
+    bot.register_next_step_handler_by_chat_id(call.message.chat.id, lambda message: update_ticker_value(bot, message, ticker_id, field))
+
+# Функция для обновления значения в базе данных
+def update_ticker_value(bot, message, ticker_id, field):
+    new_value = message.text
+    try:
+        db.update_ticker_field(ticker_id, field, new_value)
+        bot.send_message(message.chat.id, f"Значение для {field.replace('_', ' ').title()} успешно обновлено!")
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Ошибка при обновлении данных: {e}")

@@ -137,3 +137,30 @@ def delete_ticker(ticker_id):
     finally:
         cursor.close()
         connection.close()
+
+# Обновление тикера
+def update_ticker(ticker_id, field, new_value):
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    query = f"UPDATE tickers SET {field} = %s WHERE id = %s"
+    try:
+        cursor.execute(query, (new_value, ticker_id))
+        connection.commit()
+    except mysql.connector.Error as e:
+        print(f"Error updating ticker: {e}")
+    finally:
+        cursor.close()
+        connection.close()
+
+def update_ticker_field(ticker_id, field, new_value):
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    query = f"UPDATE tickers SET {field} = %s WHERE id = %s"
+    try:
+        cursor.execute(query, (new_value, ticker_id))
+        connection.commit()
+    except mysql.connector.Error as e:
+        print(f"Error updating ticker: {e}")
+    finally:
+        cursor.close()
+        connection.close()

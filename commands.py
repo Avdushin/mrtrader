@@ -115,6 +115,30 @@ def register_handlers(bot):
         bot.answer_callback_query(call.id, "Удаление отменено.")
         bot.edit_message_text("Удаление тикера отменено.", call.message.chat.id, call.message.message_id)
 
+    # Обновление тикеров
+    # Обработчик для начала редактирования
+    @bot.callback_query_handler(func=lambda call: call.data == "edit_ticker")
+    def handle_edit_ticker(call):
+        edit_ticker(bot, call)
+
+    # Обработчик для выбора поля для редактирования
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("edit_") and not call.data.startswith("editfield_"))
+    def handle_edit_selection(call):
+        select_field_to_edit(bot, call)
+
+    # Обработчик для ввода нового значения поля
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("editfield_"))
+    def handle_field_edit(call):
+        get_new_value(bot, call)
+    
+    # Отмена изменения тикера
+    @bot.callback_query_handler(func=lambda call: call.data == "cancel_edit")
+    def handle_cancel_edit(call):
+        bot.answer_callback_query(call.id, "Редактирование отменено.")
+        bot.send_message(call.message.chat.id, "Редактирование отменено. Возвращаемся в главное меню.")
+        manage_tickers(bot, call.message)
+
+
 ### =============================================================================
 
 def process_add_admin(message, bot):
