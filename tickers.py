@@ -176,7 +176,7 @@ def show_ticker_info(bot, call):
                 f"<b>Точка входа (ТВХ):</b> <code>{ticker[2]}</code>\n"
                 f"<b>Тейк-профит:</b> <code>{ticker[3]}</code>\n"
                 f"<b>Стоп-лос:</b> <code>{ticker[4]}</code>\n"
-                f"<b>Текущая стоимость:</b> <code>${get_current_price(ticker[1], 'BINANCE')}</code>\n"
+                f"<b>Текущая стоимость:</b> <code>${get_current_price(ticker[1], 'BYBIT')}</code>\n"
                 f"<b>Сетап:</b> <code>{ticker[6]}</code>\n"
                 f"<b>Позиция:</b> <code>{ticker[8]}</code>"
             )

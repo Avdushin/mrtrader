@@ -17,3 +17,11 @@ ADMIN_IDS = [int(id.strip()) for id in os.getenv('ADMIN_IDS', '').split(',')]
 ADMIN_CHAT_IDS = [int(id.strip()) for id in os.getenv('ADMIN_CHAT_IDS', '').split(',') if id.strip()]
 
 IMAGE_UPLOAD_PATH = 'setups'
+
+GENERAL_EXCHANGES = {
+    'BYBIT': 'BYBIT',
+    'BINANCE': 'BINANCE',
+    'BINGX': 'BINGX',
+    'KRAKEN': 'KRAKEN',
+    'COINBASE': 'COINBASE'
+}
