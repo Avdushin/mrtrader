@@ -164,3 +164,28 @@ def update_ticker_field(ticker_id, field, new_value):
     finally:
         cursor.close()
         connection.close()
+
+# Ticker's monitoring
+def update_ticker_active(ticker_id, active_status):
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("UPDATE tickers SET active = %s WHERE id = %s", (int(active_status), ticker_id))
+        connection.commit()
+    except mysql.connector.Error as e:
+        print(f"Error updating ticker active status: {e}")
+    finally:
+        cursor.close()
+        connection.close()
+
+# def update_ticker_active(ticker_id, active_status):
+#     connection = get_db_connection()
+#     cursor = connection.cursor()
+#     try:
+#         cursor.execute("UPDATE tickers SET active = %s WHERE id = %s", (active_status, ticker_id))
+#         connection.commit()
+#     except mysql.connector.Error as e:
+#         print(f"Error updating ticker active status: {e}")
+#     finally:
+#         cursor.close()
+#         connection.close()

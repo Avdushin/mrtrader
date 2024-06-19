@@ -15,6 +15,7 @@ DB_CONFIG = {
 # ADMIN_IDS = [int(id.strip()) for id in os.getenv('ADM', '').split(',')]
 ADMIN_IDS = [int(id.strip()) for id in os.getenv('ADMIN_IDS', '').split(',')]
 ADMIN_CHAT_IDS = [int(id.strip()) for id in os.getenv('ADMIN_CHAT_IDS', '').split(',') if id.strip()]
+print("Admin Chat IDs from env:", os.getenv('ADMIN_CHAT_IDS'))
 
 IMAGE_UPLOAD_PATH = 'setups'
 
