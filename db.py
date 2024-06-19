@@ -26,7 +26,7 @@ def setup_database():
             stop_loss DOUBLE,
             current_rate DOUBLE,
             setup_image_path VARCHAR(255),
-            active BOOLEAN,
+            active BOOLEAN DEFAULT TRUE,
             direction VARCHAR(10)
         )
         ''')

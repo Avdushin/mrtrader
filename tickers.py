@@ -2,12 +2,15 @@
 from telebot import types
 from datetime import datetime
 from tradingview_ta import TA_Handler, Interval, Exchange
+from apscheduler.schedulers.background import BackgroundScheduler
 from utils import *
 import os
 import db
 import logging
 
+# Настройка логгирования для APScheduler
 logging.basicConfig(level=logging.INFO)
+logging.getLogger('apscheduler').setLevel(logging.DEBUG)
 
 EXCHANGES = ['BINANCE', 'BYBIT', 'KRAKEN', 'COINBASE']
 
@@ -221,3 +224,30 @@ def update_ticker_value(bot, message, ticker_id, field):
         bot.send_message(message.chat.id, f"Значение для {field.replace('_', ' ').title()} успешно обновлено!")
     except Exception as e:
         bot.send_message(message.chat.id, f"Ошибка при обновлении данных: {e}")
+
+# Monitoring =================================================================
+def monitor_tickers(bot):
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(func=check_entry_points, trigger="interval", seconds=1, args=[bot])
+    scheduler.start()
+
+def check_entry_points(bot):
+    try:
+        connection = db.get_db_connection()
+        cursor = connection.cursor()
+        cursor.execute("SELECT id, ticker, entry_point FROM tickers")
+        tickers = cursor.fetchall()
+        for ticker in tickers:
+            ticker_id, ticker_name, entry_point = ticker
+            current_rate = get_current_price(ticker_name, 'BINANCE')  # Предполагаем, что все тикеры на Binance
+            if current_rate:
+                percent_difference = abs(current_rate - entry_point) / entry_point
+                # Проверяем, находится ли текущая цена в пределах 2% от точки входа
+                if percent_difference < 0.02:
+                    message_text = f"🚨 {ticker_name} близок к точке входа: {entry_point} (текущая цена: {current_rate})"
+                    bot.send_message(chat_id=admin_chat_id, text=message_text)  # Отправка сообщения администратору
+    except Exception as e:
+        logging.error(f"Ошибка при мониторинге тикеров: {str(e)}")
+    finally:
+        cursor.close()
+        connection.close()
