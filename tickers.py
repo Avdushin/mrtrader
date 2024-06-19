@@ -34,8 +34,10 @@ def manage_tickers(bot, message):
 
 
 def initiate_add_ticker(bot, call):
+    markup = types.InlineKeyboardMarkup()
     bot.answer_callback_query(call.id)
     msg = bot.send_message(call.message.chat.id, "Введите имя тикера:")
+    markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
     bot.register_next_step_handler(msg, ask_for_exchange, bot)
 
 def ask_for_exchange(message, bot):
@@ -43,7 +45,9 @@ def ask_for_exchange(message, bot):
     markup = types.InlineKeyboardMarkup()
     for exchange in EXCHANGES:
         markup.add(types.InlineKeyboardButton(exchange, callback_data=f"exchange_{exchange}_{ticker_name}"))
+    markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
     bot.send_message(message.chat.id, "Выберите биржу:", reply_markup=markup)
+
 
 def handle_exchange_selection(bot, call):
     _, exchange, ticker_name = call.data.split('_')
@@ -62,6 +66,7 @@ def ask_for_direction(bot, message, ticker_name, exchange, current_rate):
     bot.send_message(message.chat.id, "Выберите направление сделки:", reply_markup=markup)
 
 def process_direction(bot, call):
+    markup = types.InlineKeyboardMarkup()
     # Парсинг callback_data, чтобы извлечь нужные параметры
     _, direction, ticker_name, exchange, current_rate_str = call.data.split('_')
     try:
@@ -69,36 +74,42 @@ def process_direction(bot, call):
     except ValueError:
         bot.send_message(call.message.chat.id, "Ошибка при конвертации текущего курса в число.")
         return
-
+    markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
     # Передаем в следующий шаг все значения как есть, не пытаясь конвертировать направление сделки в число
-    bot.send_message(call.message.chat.id, f"Введите точку входа для {ticker_name} ({direction}):")
+    bot.send_message(call.message.chat.id, f"Введите точку входа для {ticker_name} ({direction}):", reply_markup=markup)
     bot.register_next_step_handler(call.message, process_entry_point, bot, ticker_name, exchange, direction, current_rate)
 
 
 def process_entry_point(message, bot, ticker_name, exchange, direction, current_rate):
+    markup = types.InlineKeyboardMarkup()
     try:
         entry_point = float(message.text)
     except ValueError:
         bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для точки входа.")
         return  # Возврат в функцию для повторного ввода
+    markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
     bot.send_message(message.chat.id, "Введите значение тейк-профит:")
     bot.register_next_step_handler(message, process_take_profit, bot, ticker_name, exchange, direction, entry_point, current_rate)
 
 def process_take_profit(message, bot, ticker_name, exchange, direction, entry_point, current_rate):
+    markup = types.InlineKeyboardMarkup()
     try:
         take_profit = float(message.text)
     except ValueError:
         bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для тейк-профит.")
         return  # Возврат в функцию для повторного ввода
+    markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
     bot.send_message(message.chat.id, "Введите значение стоп-лосс:")
     bot.register_next_step_handler(message, process_stop_loss, bot, ticker_name, exchange, direction, entry_point, take_profit, current_rate)
 
 def process_stop_loss(message, bot, ticker_name, exchange, direction, entry_point, take_profit, current_rate):
+    markup = types.InlineKeyboardMarkup()
     try:
         stop_loss = float(message.text)
     except ValueError:
         bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для стоп-лосс.")
         return  # Возврат в функцию для повторного ввода
+    markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
     bot.send_message(message.chat.id, "Прикрепите изображение сетапа или отправьте URL:")
     bot.register_next_step_handler(message, finalize_setup, bot, ticker_name, exchange, direction, entry_point, take_profit, stop_loss, current_rate)
 

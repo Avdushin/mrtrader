@@ -121,6 +121,12 @@ def register_handlers(bot):
     def handle_confirm_delete_ticker(call):
         confirm_delete_ticker(bot, call)
 
+     # Отмена добавления тикера
+    @bot.callback_query_handler(func=lambda call: call.data == "cancel_add_ticker")
+    def cancel_add_ticker(call):
+        bot.answer_callback_query(call.id, "Добавление тикера отменено.")
+        bot.edit_message_text("Добавление тикера было отменено.", call.message.chat.id, call.message.message_id)
+
     # Отмена удаления тикера
     @bot.callback_query_handler(func=lambda call: call.data == "cancel_delete")
     def handle_cancel_delete(bot, call):
