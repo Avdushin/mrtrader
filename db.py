@@ -30,6 +30,21 @@ def setup_database():
             direction VARCHAR(10)
         )
         ''')
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS archive (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            ticker VARCHAR(35),
+            entry_point DOUBLE,
+            take_profit DOUBLE,
+            stop_loss DOUBLE,
+            current_rate DOUBLE,
+            setup_image_path VARCHAR(255),
+            direction VARCHAR(10),
+            close_date DATETIME,
+            status VARCHAR(10)
+        )
+        ''')
+
         # Добавление администраторов
         for admin_id in ADMIN_IDS:
             cursor.execute("INSERT IGNORE INTO admins (user_id) VALUES (%s)", (admin_id,))
@@ -178,14 +193,34 @@ def update_ticker_active(ticker_id, active_status):
         cursor.close()
         connection.close()
 
-# def update_ticker_active(ticker_id, active_status):
-#     connection = get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("UPDATE tickers SET active = %s WHERE id = %s", (active_status, ticker_id))
-#         connection.commit()
-#     except mysql.connector.Error as e:
-#         print(f"Error updating ticker active status: {e}")
-#     finally:
-#         cursor.close()
-#         connection.close()
+# Архивация тикеров
+def archive_tickers():
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    try:
+        # Выборка всех неактивных тикеров
+        cursor.execute("SELECT * FROM tickers WHERE active = 0")
+        tickers = cursor.fetchall()
+
+        for ticker in tickers:
+            id, ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path, _, direction = ticker
+
+            # Определение статуса сделки
+            status = "прибыль" if current_rate >= take_profit else "убыток"
+            close_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # Вставка в архив
+            cursor.execute("""
+            INSERT INTO archive (ticker, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction, close_date, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction, close_date, status))
+
+            # Удаление из основной таблицы
+            cursor.execute("DELETE FROM tickers WHERE id = %s", (id,))
+
+        connection.commit()
+    except mysql.connector.Error as e:
+        print(f"Ошибка при архивации тикеров: {e}")
+    finally:
+        cursor.close()
+        connection.close()

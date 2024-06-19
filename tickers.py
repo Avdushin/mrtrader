@@ -10,6 +10,7 @@ from utils import *
 import config
 import os
 import db
+import ROI
 import logging
 
 # Настройка логгирования для APScheduler
@@ -292,22 +293,6 @@ def update_ticker_value(bot, message, ticker_id, field):
         bot.send_message(message.chat.id, f"Ошибка при обновлении данных: {e}")
 
 # Monitoring =================================================================
-# def start_monitoring(bot):
-#     global global_bot
-#     global_bot = bot
-#     scheduler = BackgroundScheduler(timezone=utc)
-#     scheduler.add_job(monitor_prices, 'interval', seconds=3)
-#     scheduler.start()
-
-# def start_monitoring(bot):
-#     global global_bot
-#     global_bot = bot
-#     scheduler = BackgroundScheduler(timezone=utc)
-#     scheduler.add_job(monitor_prices, 'interval', seconds=3)
-#     scheduler.start()
-#     logging.info(f"Admin Chat IDs loaded: {config.ADMIN_CHAT_IDS}")
-
-
 def start_monitoring(bot):
     global global_bot
     global_bot = bot
@@ -333,29 +318,12 @@ def send_alert(ticker_id, message_text):
         except Exception as e:
             logging.error(f"Failed to send alert to {chat_id}: {str(e)}")
 
-# def send_alert(message_text):
-#     print("Admin Chat IDs:", config.ADMIN_CHAT_IDS)
-#     for chat_id in config.ADMIN_CHAT_IDS:
-#         try:
-#             global_bot.send_message(chat_id=chat_id, text=message_text)
-#             logging.info(f"Sent alert to {chat_id}: {message_text}")
-#         except Exception as e:
-#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}")
-
-
-# def send_alert(message_text):
-#     for chat_id in config.ADMIN_CHAT_IDS:
-#         try:
-#             global_bot.send_message(chat_id=chat_id, text=message_text)
-#             logging.info(f"Sent alert to {chat_id}: {message_text}")
-#         except Exception as e:
-#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}")
-
 def monitor_prices():
     logging.info("Начало мониторинга цен...")
     connection = db.get_db_connection()
     cursor = connection.cursor()
     try:
+        db.archive_tickers()
         cursor.execute("SELECT id, ticker, entry_point, take_profit, stop_loss FROM tickers WHERE active=1")
         tickers = cursor.fetchall()
         if not tickers:
@@ -377,7 +345,6 @@ def monitor_prices():
         cursor.close()
         connection.close()
 
-
 def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
     message_text = ""
     if abs(current_rate - entry_point) / entry_point < 0.015:
@@ -392,17 +359,36 @@ def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop
         db.update_ticker_active(ticker_id, False)
     return message_text
 
-# def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
-#     message_text = ""
-#     if abs(current_rate - entry_point) / entry_point < 0.015:
-#         message_text += f"🚨 {ticker_name} is within 1.5% of the entry point on {exchange}: {entry_point} (current price: {current_rate})\n"
-#     if current_rate == entry_point:
-#         message_text += f"✅ {ticker_name} has reached the entry point on {exchange}.\n"
-#     if current_rate >= take_profit:
-#         message_text += f"🎉 {ticker_name} has reached take profit on {exchange}.\n"
-#         db.update_ticker_active(ticker_id, False)
-#     if current_rate <= stop_loss:
-#         message_text += f"🛑 {ticker_name} has hit stop loss on {exchange}.\n"
-#         db.update_ticker_active(ticker_id, False)
-#     return message_text
 
+""""АРХИВ СДЕЛОК"""
+def archive_tickers_list(bot, message):
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("SELECT id, ticker, status FROM archive")
+        tickers = cursor.fetchall()
+        markup = types.InlineKeyboardMarkup()
+        for id, ticker, status in tickers:
+            markup.add(types.InlineKeyboardButton(f"{ticker} - {status}", callback_data=f"archive_{id}"))
+        bot.send_message(message.chat.id, "Выберите сделку для просмотра:", reply_markup=markup)
+    except mysql.connector.Error as e:
+        bot.send_message(message.chat.id, f"Ошибка при получении данных: {e}")
+    finally:
+        cursor.close()
+        connection.close()
+
+def show_archive_tickers_list(bot, message):
+    connection = db.get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("SELECT id, ticker, status FROM archive")
+        tickers = cursor.fetchall()
+        markup = types.InlineKeyboardMarkup()
+        for id, ticker, status in tickers:
+            markup.add(types.InlineKeyboardButton(f"{ticker} - {status}", callback_data=f"archive_{id}"))
+        bot.send_message(message.chat.id, "Выберите сделку для просмотра:", reply_markup=markup)
+    except mysql.connector.Error as e:
+        bot.send_message(message.chat.id, f"Ошибка при получении данных: {e}")
+    finally:
+        cursor.close()
+        connection.close()
