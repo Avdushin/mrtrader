@@ -2,7 +2,9 @@
 from telebot import types
 from datetime import datetime
 from tradingview_ta import TA_Handler, Interval, Exchange
+import config
 from apscheduler.schedulers.background import BackgroundScheduler
+from pytz import utc
 from utils import *
 import os
 import db
@@ -226,28 +228,32 @@ def update_ticker_value(bot, message, ticker_id, field):
         bot.send_message(message.chat.id, f"Ошибка при обновлении данных: {e}")
 
 # Monitoring =================================================================
-def monitor_tickers(bot):
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(func=lambda: check_entry_points(bot), trigger="interval", seconds=1)
-    scheduler.start()
-    logging.info("Scheduler started. Monitoring entry points.")
-
-def check_entry_points(bot):
+def monitor_prices():
+    logging.info("Starting price monitoring...")
     connection = db.get_db_connection()
     cursor = connection.cursor()
     try:
-        cursor.execute("SELECT id, ticker, entry_point, current_rate FROM tickers WHERE active IS TRUE")
+        cursor.execute("SELECT id, ticker, entry_point FROM tickers")
+        # cursor.execute("SELECT id, ticker, entry_point FROM tickers WHERE active=TRUE")
         tickers = cursor.fetchall()
         for ticker in tickers:
-            ticker_id, ticker_name, entry_point, current_rate = ticker
+            ticker_id, ticker_name, entry_point = ticker
             current_rate = get_current_price(ticker_name, 'BINANCE')
-            if current_rate:
-                if abs(current_rate - entry_point) / entry_point < 0.01:  # проверяем, что цена в пределах 1%
-                    message = f"🚨 {ticker_name} приближается к точке входа: {entry_point} (текущая цена: {current_rate})"
-                    bot.send_message(chat_id=config.ADMIN_CHAT_ID, text=message)
-                    logging.info(f"Alert sent for {ticker_name}: {message}")
+            if current_rate is not None:
+                percent_difference = abs(current_rate - entry_point) / entry_point
+                logging.info(f"Checked {ticker_name}: current rate {current_rate}, entry point {entry_point}")
+                # if percent_difference <= 0.01:
+                if percent_difference <= 0.05:
+                    message_text = f"🚨 {ticker_name} приближается к точке входа: {entry_point} (текущая цена: {current_rate})"
+                    bot.send_message(chat_id=config.ADMIN_CHAT_ID, text=message_text)
+                    logging.info(f"Sent alert for {ticker_name}: {message_text}")
     except Exception as e:
-        logging.error(f"Error while monitoring tickers: {e}")
+        logging.error(f"Error during price monitoring: {str(e)}")
     finally:
         cursor.close()
         connection.close()
+
+def start_monitoring():
+    scheduler = BackgroundScheduler(timezone=utc)
+    scheduler.add_job(monitor_prices, 'interval', seconds=1)
+    scheduler.start()
