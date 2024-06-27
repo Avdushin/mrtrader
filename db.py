@@ -88,16 +88,34 @@ def is_admin(user_id):
         cursor.close()
         db.close()
 
+# def get_admins():
+#     db = get_db_connection()
+#     cursor = db.cursor()
+#     try:
+#         cursor.execute("SELECT user_id FROM admins")
+#         admins = cursor.fetchall()
+#         return [admin[0] for admin in admins] 
+#     finally:
+#         cursor.close()
+#         db.close()
+
 def get_admins():
-    db = get_db_connection()
-    cursor = db.cursor()
+    # Считываем ID администраторов из .env
+    env_admins = set(config.ADMIN_IDS)
+    # Получаем список администраторов из базы данных
+    db_admins = set()
     try:
-        cursor.execute("SELECT user_id FROM admins")
-        admins = cursor.fetchall()
-        return [admin[0] for admin in admins] 
+        connection = get_db_connection()
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT user_id FROM admins")
+            for row in cursor:
+                db_admins.add(row[0])
     finally:
-        cursor.close()
-        db.close()
+        if connection:
+            connection.close()
+    # Объединяем оба списка
+    return list(env_admins.union(db_admins))
+
 
 """ Тикеры """
 

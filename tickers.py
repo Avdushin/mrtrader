@@ -55,7 +55,13 @@ def ask_for_exchange(message, bot):
 
 
 def handle_exchange_selection(bot, call):
-    _, exchange, ticker_name = call.data.split('_')
+    # _, exchange, ticker_name = call.data.split('_')
+    parts = call.data.split('_', 2)
+    if len(parts) < 3:
+        bot.send_message(call.message.chat.id, "Ошибка в данных. Пожалуйста, попробуйте снова.")
+        return
+    _, exchange, ticker_name = parts
+
     bot.answer_callback_query(call.id)
     current_rate = get_current_price(ticker_name, exchange)
     if current_rate is None:
