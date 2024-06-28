@@ -17,6 +17,9 @@ def is_admin(user_id):
             connection.close()
     return False
 
+def is_god(user_id):
+    return user_id in config.GODS
+
 # import config
 
 # def is_admin(user_id):

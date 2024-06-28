@@ -2,7 +2,7 @@
 from telebot import types
 from db import is_admin, add_admin, remove_admin, get_admins, confirm_entry
 from tickers import *
-from admin import is_admin
+from admin import is_admin, is_god
 from ROI import calculate_roi
 import mysql.connector
 
@@ -11,12 +11,17 @@ selected_trades = set()
 
 def register_handlers(bot):
     @bot.message_handler(commands=['start', 'help'])
-    @bot.message_handler(commands=['start', 'help'])
     def send_welcome(message):
-        if is_admin(message.from_user.id):
+        if is_god(message.from_user.id):
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            markup.row(types.KeyboardButton("📈 Тикеры"), types.KeyboardButton("Архив сделок"))
+            markup.row(types.KeyboardButton("⚙️ Панель администратора"), types.KeyboardButton("🧙🏻‍♂️ Асгард"))
+            bot.reply_to(message, "Привет, БОГ! Выберай действие и созидай бытие:", reply_markup=markup)
+        elif is_admin(message.from_user.id):
             # Административная клавиатура
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            markup.row(types.KeyboardButton("📈 Тикеры"), types.KeyboardButton("Архив сделок"), types.KeyboardButton("⚙️ Панель администратора"))
+            markup.row(types.KeyboardButton("📈 Тикеры"), types.KeyboardButton("Архив сделок"))
+            markup.row(types.KeyboardButton("⚙️ Панель администратора"))
             bot.reply_to(message, "Привет, администратор! Выберите действие:", reply_markup=markup)
         else:
             # Клавиатура для обычных пользователей
@@ -36,6 +41,76 @@ def register_handlers(bot):
         else:
             manage_tickers(bot, message)  # Только просмотр списка тикеров для обычных пользователей
 
+    @bot.message_handler(func=lambda message: message.text == "🧙🏻‍♂️ Асгард")
+    def god_panel(message):
+        if not is_god(message.from_user.id):
+            bot.reply_to(message, "У вас нет прав БОГА.")
+            return
+        # Создаем клавиатуру
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        # Добавляем первый ряд кнопок
+        markup.row(types.KeyboardButton("📈 Тикеры"), types.KeyboardButton("Архив сделок"))
+        # Добавляем второй ряд кнопок
+        markup.row(types.KeyboardButton("⚙️ Панель администратора"), types.KeyboardButton("📨Чаты"))
+        # Отправляем сообщение с клавиатурой
+        bot.reply_to(message, "Добро пожаловать в Асгард! Созидай на здоровье =):", reply_markup=markup)
+
+    """"CHATS"""""
+    @bot.message_handler(func=lambda message: message.text == "📨Чаты")
+    def chat_management(message):
+        if not is_god(message.from_user.id):
+            bot.reply_to(message, "У вас нет прав для управления чатами.")
+            return
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("Добавить чат", callback_data="add_chat"),
+                types.InlineKeyboardButton("Удалить чат", callback_data="remove_chat"))
+        bot.send_message(message.chat.id, "Управление чатами:", reply_markup=markup)
+
+    @bot.callback_query_handler(func=lambda call: call.data == "add_chat")
+    def add_chat(call):
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_chat"))
+        msg = bot.send_message(call.message.chat.id, "Введите ID чата для добавления:", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_add_chat)
+
+    def process_add_chat(message):
+        chat_id = message.text.strip()
+        if chat_id.isdigit():
+            # Здесь функция добавления чата в базу данных
+            db.add_chat_to_db(int(chat_id))
+            bot.reply_to(message, f"Чат {chat_id} успешно добавлен.")
+        else:
+            bot.reply_to(message, "Введите корректный ID чата.")
+
+    @bot.callback_query_handler(func=lambda call: call.data == "cancel_add_chat")
+    def cancel_add_chat(call):
+        bot.answer_callback_query(call.id, "Добавление чата отменено.")
+        bot.edit_message_text("Добавление чата было отменено.", call.message.chat.id, call.message.message_id)
+
+    @bot.callback_query_handler(func=lambda call: call.data == "remove_chat")
+    def prompt_remove_chat(call):
+        bot.answer_callback_query(call.id)
+        chat_ids = db.get_all_chats()  # Получаем список чатов из базы данных
+        admin_chats = set(config.ADMIN_CHAT_IDS)  # Читаем административные ID чатов из конфигурации
+        all_chats = set(chat_ids).union(admin_chats)  # Объединяем списки чатов
+
+        if not all_chats:
+            bot.send_message(call.message.chat.id, "Нет чатов для удаления.")
+            return
+
+        markup = types.InlineKeyboardMarkup()
+        for chat_id in all_chats:
+            markup.add(types.InlineKeyboardButton(text=f"Удалить {chat_id}", callback_data=f"del_chat_{chat_id}"))
+        bot.send_message(call.message.chat.id, "Выберите чат для удаления:", reply_markup=markup)
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("del_chat_"))
+    def confirm_remove_chat(call):
+        chat_id = int(call.data.split("_")[2])
+        db.remove_chat_from_db(chat_id)  # Удаление чата из базы данных
+        if chat_id in config.ADMIN_CHAT_IDS:
+            config.ADMIN_CHAT_IDS.remove(chat_id)  # Удаление чата из списка, если он там есть
+        bot.answer_callback_query(call.id, "Чат удален.")
+        bot.send_message(call.message.chat.id, f"Чат {chat_id} успешно удален.")
 
     @bot.message_handler(func=lambda message: message.text == "⚙️ Панель администратора")
     def admin_panel(message):
@@ -47,7 +122,6 @@ def register_handlers(bot):
         markup.add(types.InlineKeyboardButton(text="Добавить администратора", callback_data="add_admin"))
         markup.add(types.InlineKeyboardButton(text="Удалить администратора", callback_data="remove_admin"))
         bot.send_message(message.chat.id, "Выберите действие:", reply_markup=markup)
-
 
     @bot.callback_query_handler(func=lambda call: call.data == "add_admin")
     def prompt_new_admin(call):

@@ -1,7 +1,8 @@
 # db.py
 import mysql.connector
 from datetime import datetime
-from config import DB_CONFIG, ADMIN_IDS,IMAGE_UPLOAD_PATH
+from config import DB_CONFIG, ADMIN_IDS, IMAGE_UPLOAD_PATH
+import config
 import logging, os
 
 def get_db_connection():
@@ -30,6 +31,7 @@ def setup_database():
             direction VARCHAR(10)
         )
         ''')
+        
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS archive (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -42,9 +44,15 @@ def setup_database():
             direction VARCHAR(10),
             close_date DATETIME,
             status VARCHAR(10)
-        )
+        )          
         ''')
-
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS chats (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            chat_id BIGINT UNIQUE
+        )
+       ''')
+                
         # Добавление администраторов
         for admin_id in ADMIN_IDS:
             cursor.execute("INSERT IGNORE INTO admins (user_id) VALUES (%s)", (admin_id,))
@@ -478,3 +486,36 @@ def delete_all_archived_trades():
     finally:
         cursor.close()
         connection.close()
+
+"""CHATS"""
+# Получение всех чатов
+def get_all_chats():
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("SELECT chat_id FROM chats")
+        return [row[0] for row in cursor.fetchall()]
+    finally:
+        cursor.close()
+        connection.close()
+
+# Добавление чата
+def add_chat_to_db(chat_id):
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        cursor.execute("INSERT INTO chats (chat_id) VALUES (%s)", (chat_id,))
+        db.commit()
+    finally:
+        cursor.close()
+        db.close()
+
+def remove_chat_from_db(chat_id):
+    db = get_db_connection()
+    cursor = db.cursor()
+    try:
+        cursor.execute("DELETE FROM chats WHERE chat_id = %s", (chat_id,))
+        db.commit()
+    finally:
+        cursor.close()
+        db.close()
