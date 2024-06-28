@@ -230,7 +230,7 @@ def get_active_trades():
         cursor.execute("""
             SELECT id, ticker, entry_point, take_profit, stop_loss, current_rate, direction, entry_confirmed
             FROM tickers
-            WHERE active = TRUE
+            WHERE entry_confirmed = TRUE
         """)
         trades = cursor.fetchall()
         return [{
@@ -252,8 +252,12 @@ def cancel_trade(trade_id):
     connection = get_db_connection()
     cursor = connection.cursor()
     try:
-        cursor.execute("UPDATE tickers SET active = FALSE WHERE id = %s", (trade_id,))
+        logging.info(f"Cancelling trade with ID: {trade_id}")
+        cursor.execute("UPDATE tickers SET entry_confirmed = FALSE WHERE id = %s", (trade_id,))
         connection.commit()
+        logging.info(f"Trade with ID: {trade_id} has been cancelled.")
+    except mysql.connector.Error as e:
+        logging.error(f"Error cancelling trade: {e}")
     finally:
         cursor.close()
         connection.close()

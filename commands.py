@@ -245,9 +245,17 @@ def register_handlers(bot):
     @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_trade_"))
     def cancel_trade(call):
         trade_id = int(call.data.split('_')[2])
+        logging.info(f"Attempting to cancel trade with ID: {trade_id}")
         db.cancel_trade(trade_id)
         bot.answer_callback_query(call.id, "Сделка отменена.")
         bot.edit_message_text("Сделка успешно отменена.", call.message.chat.id, call.message.message_id)
+
+    # @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_trade_"))
+    # def cancel_trade(call):
+    #     trade_id = int(call.data.split('_')[2])
+    #     db.cancel_trade(trade_id)
+    #     bot.answer_callback_query(call.id, "Сделка отменена.")
+    #     bot.edit_message_text("Сделка успешно отменена.", call.message.chat.id, call.message.message_id)
 
     """ АРХИВ СДЕЛОК """
     @bot.message_handler(func=lambda message: message.text == "Архив сделок")
