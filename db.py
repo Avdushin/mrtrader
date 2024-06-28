@@ -28,7 +28,8 @@ def setup_database():
             current_rate DOUBLE,
             setup_image_path VARCHAR(255),
             active BOOLEAN DEFAULT TRUE,
-            direction VARCHAR(10)
+            direction VARCHAR(10),
+            entry_confirmed BOOLEAN DEFAULT FALSE
         )
         ''')
         
@@ -52,6 +53,13 @@ def setup_database():
             chat_id BIGINT UNIQUE
         )
        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_themes (
+            user_id BIGINT UNIQUE,
+            theme VARCHAR(255),
+            PRIMARY KEY(user_id)
+        );
+       ''')
                 
         # Добавление администраторов
         for admin_id in ADMIN_IDS:
@@ -63,6 +71,27 @@ def setup_database():
         cursor.close()
         db.close()
 
+# Темы
+def set_user_theme(user_id, theme):
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("INSERT INTO user_themes (user_id, theme) VALUES (%s, %s) ON DUPLICATE KEY UPDATE theme = %s", (user_id, theme, theme))
+        connection.commit()
+    finally:
+        cursor.close()
+        connection.close()
+
+def get_user_theme(user_id):
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("SELECT theme FROM user_themes WHERE user_id = %s", (user_id,))
+        result = cursor.fetchone()
+        return result[0] if result else None
+    finally:
+        cursor.close()
+        connection.close()
 
 """ Админский блок """
 def add_admin(user_id):
