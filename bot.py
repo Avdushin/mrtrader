@@ -1,5 +1,4 @@
 # bot.py
-# bot.py
 import telebot
 import threading
 from config import TOKEN
@@ -17,17 +16,16 @@ if __name__ == "__main__":
     db.setup_database()
     commands.register_handlers(bot)
     threading.Thread(target=start_monitoring, args=(bot,)).start()
-    backups.start_backup_scheduler()  # Запуск планировщика резервного копирования
+    backups.start_backup_scheduler()
     run_bot()
 
-
-# from config import TOKEN
-# from tickers import start_monitoring
 # import telebot
 # import threading
+# from config import TOKEN
+# from tickers import start_monitoring
 # import commands
-# import backups
 # import db
+# import backups
 
 # bot = telebot.TeleBot(TOKEN)
 
@@ -38,5 +36,5 @@ if __name__ == "__main__":
 #     db.setup_database()
 #     commands.register_handlers(bot)
 #     threading.Thread(target=start_monitoring, args=(bot,)).start()
-#     backups.start_backup_scheduler() 
+#     backups.start_backup_scheduler()
 #     run_bot()
