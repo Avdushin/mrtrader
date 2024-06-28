@@ -53,9 +53,11 @@ def register_handlers(bot):
     @bot.message_handler(func=lambda message: message.text == "📈 Тикеры")
     def ticker_handler(message):
         if is_admin(message.from_user.id):
-            manage_tickers(bot, message)  # Полный доступ для администраторов
+            # Полный доступ для администраторов
+            manage_tickers(bot, message)
         else:
-            manage_tickers(bot, message)  # Только просмотр списка тикеров для обычных пользователей
+            # Только просмотр списка тикеров для обычных пользователей
+            manage_tickers(bot, message)
 
     @bot.message_handler(func=lambda message: message.text == "🧙🏻‍♂️ Асгард")
     def god_panel(message):
