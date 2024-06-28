@@ -17,7 +17,6 @@ def is_admin(user_id):
             connection.close()
     return False
 
-
 # import config
 
 # def is_admin(user_id):

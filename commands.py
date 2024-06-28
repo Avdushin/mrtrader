@@ -1,9 +1,13 @@
 # commands.py
 from telebot import types
-from db import is_admin, add_admin, remove_admin, get_admins
+from db import is_admin, add_admin, remove_admin, get_admins, confirm_entry
 from tickers import *
 from admin import is_admin
 from ROI import calculate_roi
+import mysql.connector
+
+# Global variable to track selected trades
+selected_trades = set()
 
 def register_handlers(bot):
     @bot.message_handler(commands=['start', 'help'])
@@ -174,6 +178,76 @@ def register_handlers(bot):
             bot.send_message(message.chat.id, "Дурик, ты и так всё знаешь =)")
         else:
             bot.send_message(message.chat.id, "Если у вас появились вопросы свяжитесь с автором бота: @Itdobro")
+    
+    # Вход в сделку
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_entry_"))
+    def confirm_entry_handler(call):
+        ticker_id = int(call.data.split('_')[2])
+        confirm_entry(ticker_id)
+        bot.answer_callback_query(call.id, "Вход в сделку подтвержден.")
+        bot.send_message(call.message.chat.id, "Вход в сделку подтвержден. Будут отправлены только уведомления о тейк-профите или стоп-лоссе.")
+
+    # @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_entry_"))
+    # def confirm_entry_handler(call):
+    #     ticker_id = int(call.data.split('_')[2])
+    #     db.confirm_entry(ticker_id)
+    #     bot.answer_callback_query(call.id, "Вход в сделку подтвержден.")
+    #     bot.send_message(call.message.chat.id, "Вход в сделку подтвержден. Будут отправлены только уведомления о тейк-профите или стоп-лоссе.")
+
+    # @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_entry_"))
+    # def confirm_entry(call):
+    #     ticker_id = int(call.data.split('_')[2])
+    #     db.confirm_entry(ticker_id)
+    #     bot.answer_callback_query(call.id, "Вход в сделку подтвержден. Уведомления о приближении к точке входа больше не будут отправляться.")
+
+    # Активные сделки
+    @bot.callback_query_handler(func=lambda call: call.data == "active_trades")
+    def show_active_trades(call):
+        active_trades = db.get_active_trades()
+        if not active_trades:
+            bot.send_message(call.message.chat.id, "Нет активных сделок.")
+            return
+
+        markup = types.InlineKeyboardMarkup()
+        for trade in active_trades:
+            button_text = f"{trade['ticker']} - {trade['direction']}"
+            callback_data = f"trade_info_{trade['id']}"
+            markup.add(types.InlineKeyboardButton(text=button_text, callback_data=callback_data))
+
+        bot.send_message(call.message.chat.id, "Активные сделки:", reply_markup=markup)
+
+    # Детали активной сделки
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("trade_info_"))
+    def trade_info(call):
+        trade_id = int(call.data.split('_')[2])
+        trade = db.get_trade_details(trade_id)
+        if trade:
+            if trade['setup_image_path'] and os.path.exists(trade['setup_image_path']):
+                with open(trade['setup_image_path'], 'rb') as photo:
+                    bot.send_photo(call.message.chat.id, photo)
+            else:
+                bot.send_message(call.message.chat.id, "Картинка сетапа не найдена.")
+
+            info = (f"<b>Тикер:</b> {trade['ticker']}\n"
+                    f"<b>Направление:</b> {trade['direction']}\n"
+                    f"<b>Точка входа:</b> {trade['entry_point']}\n"
+                    f"<b>Тейк-профит:</b> {trade['take_profit']}\n"
+                    f"<b>Стоп-лосс:</b> {trade['stop_loss']}\n"
+                    f"<b>Текущий курс:</b> {trade['current_rate']}\n"
+                    f"<b>Статус:</b> {'Активна' if trade['active'] else 'Неактивна'}")
+            markup = types.InlineKeyboardMarkup()
+            markup.add(types.InlineKeyboardButton("Выйти из сделки", callback_data=f"cancel_trade_{trade['id']}"))
+            bot.send_message(call.message.chat.id, info, parse_mode='HTML', reply_markup=markup)
+        else:
+            bot.send_message(call.message.chat.id, "Сделка не найдена.")
+
+    # Отмена сделки (из списка активных)
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_trade_"))
+    def cancel_trade(call):
+        trade_id = int(call.data.split('_')[2])
+        db.cancel_trade(trade_id)
+        bot.answer_callback_query(call.id, "Сделка отменена.")
+        bot.edit_message_text("Сделка успешно отменена.", call.message.chat.id, call.message.message_id)
 
     """ АРХИВ СДЕЛОК """
     @bot.message_handler(func=lambda message: message.text == "Архив сделок")
@@ -184,10 +258,15 @@ def register_handlers(bot):
     def show_archive(call):
         bot.answer_callback_query(call.id)
         archive_tickers_list(bot, call.message)
-    
+
     @bot.callback_query_handler(func=lambda call: call.data.startswith("archive_"))
     def show_archive_details(call):
-        ticker_id = int(call.data.split('_')[1])
+        parts = call.data.split('_')
+        if len(parts) < 3 or not parts[2].isdigit():
+            bot.send_message(call.message.chat.id, "Некорректные данные. Пожалуйста, повторите попытку.")
+            return
+
+        ticker_id = int(parts[2])
         connection = db.get_db_connection()
         cursor = connection.cursor()
         try:
@@ -195,19 +274,18 @@ def register_handlers(bot):
             ticker = cursor.fetchone()
             if ticker:
                 info = (
-                    f"<b>Тикер:</b> #{ticker[1]}\n"
-                    f"<b>Результаты сделки (ROI):</b> <code>{calculate_roi(ticker[2], ticker[3], ticker[4], ticker[5])}%</code>\n"
-                    f"<b>Направление сделки:</b> <code>{ticker[7]}</code>\n"
-                    f"<b>Точка входа:</b> <code>{ticker[2]}</code>\n"
-                    f"<b>Тейк-профит:</b> <code>{ticker[3]}</code>\n"
-                    f"<b>Стоп-лосс:</b> <code>{ticker[4]}</code>\n"
-                    f"<b>Текущий курс:</b> <code>{ticker[5]}</code>\n"
-                    f"<b>Дата закрытия:</b> <code>{ticker[8].strftime('%Y-%m-%d %H:%M:%S')}</code>\n"
-                    f"<b>Статус сделки:</b> <code>{ticker[9]}</code>"
+                    f"<b>Тикер:</b> {ticker[1]}\n"
+                    f"<b>Точка входа:</b> {ticker[2]}\n"
+                    f"<b>Тейк-профит:</b> {ticker[3]}\n"
+                    f"<b>Стоп-лосс:</b> {ticker[4]}\n"
+                    f"<b>Текущий курс:</b> {ticker[5]}\n"
+                    f"<b>Дата закрытия:</b> {ticker[8].strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"<b>Статус:</b> {ticker[9]}"
                 )
                 bot.send_message(call.message.chat.id, info, parse_mode='HTML')
                 if ticker[6] and os.path.exists(ticker[6]):
-                    bot.send_photo(call.message.chat.id, open(ticker[6], 'rb'))
+                    with open(ticker[6], 'rb') as photo:
+                        bot.send_photo(call.message.chat.id, photo)
             else:
                 bot.send_message(call.message.chat.id, "Сделка не найдена.")
         except Exception as e:
@@ -215,6 +293,107 @@ def register_handlers(bot):
         finally:
             cursor.close()
             connection.close()
+
+    # Очистка архива
+    @bot.callback_query_handler(func=lambda call: call.data == "clear_all_archive")
+    def confirm_clear_all_archive(call):
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("Подтвердить", callback_data="confirm_clear_all"),
+                types.InlineKeyboardButton("Отмена", callback_data="cancel_clear_all"))
+        bot.send_message(call.message.chat.id, "Вы уверены, что хотите очистить архив сделок?", reply_markup=markup)
+
+    @bot.callback_query_handler(func=lambda call: call.data == "confirm_clear_all")
+    def clear_all_archive(call):
+        db.delete_all_archived_trades()
+        bot.answer_callback_query(call.id, "Архив сделок полностью очищен.")
+        bot.edit_message_text("Все сделки из архива удалены.", call.message.chat.id, call.message.message_id)
+
+    @bot.callback_query_handler(func=lambda call: call.data == "cancel_clear_all")
+    def cancel_clear_all(call):
+        bot.answer_callback_query(call.id, "Очистка архива отменена.")
+        bot.edit_message_text("Очистка архива сделок отменена.", call.message.chat.id, call.message.message_id)
+
+    # Удалить сделку из архива
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("delete_archive_"))
+    def delete_selected_archived(call):
+        trade_id = int(call.data.split('_')[2])
+        db.delete_archived_trade(trade_id)
+        bot.answer_callback_query(call.id, "Архивная сделка удалена.")
+        bot.edit_message_text("Сделка успешно удалена из архива.", call.message.chat.id, call.message.message_id)
+
+    # пункты архива
+    @bot.callback_query_handler(func=lambda call: call.data == "show_archive_options")
+    def show_archive_tickers_list(bot, message):
+        connection = db.get_db_connection()
+        cursor = connection.cursor()
+        try:
+            cursor.execute("SELECT id, ticker, status FROM archive")
+            tickers = cursor.fetchall()
+            markup = types.InlineKeyboardMarkup()
+            markup.row(types.InlineKeyboardButton("Очистить архив", callback_data="clear_all_archive"))
+            markup.row(types.InlineKeyboardButton("Выборочное удаление сделок", callback_data="selective_delete_trades"))
+            for id, ticker, status in tickers:
+                markup.add(types.InlineKeyboardButton(f"{ticker} - {status}", callback_data=f"archive_select_{id}"))
+            bot.send_message(message.chat.id, "Архив сделок:", reply_markup=markup)
+        except mysql.connector.Error as e:
+            bot.send_message(message.chat.id, f"Ошибка при получении данных: {e}")
+        finally:
+            cursor.close()
+            connection.close()
+
+    # Выбор сделок для удаления из архива
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("archive_select_"))
+    def select_trade_for_deletion(call):
+        trade_id = call.data.split('_')[2]
+        if trade_id in selected_trades:
+            selected_trades.remove(trade_id)
+            bot.answer_callback_query(call.id, "Сделка удалена из списка на удаление.")
+        else:
+            selected_trades.add(trade_id)
+            bot.answer_callback_query(call.id, "Сделка добавлена в список на удаление.")
+        update_selected_trades_message(bot, call.message.chat.id)
+
+    def update_selected_trades_message(bot, chat_id):
+        if selected_trades:
+            selected_info = "Выбранные сделки для удаления: " + ', '.join(selected_trades)
+        else:
+            selected_info = "Нет выбранных сделок."
+        bot.send_message(chat_id, selected_info)
+
+    @bot.callback_query_handler(func=lambda call: call.data == "selective_delete_trades")
+    def show_archive_tickers_list_for_deletion(call):
+        connection = db.get_db_connection()
+        cursor = connection.cursor()
+        try:
+            cursor.execute("SELECT id, ticker, status FROM archive")
+            tickers = cursor.fetchall()
+            if not tickers:
+                bot.send_message(call.message.chat.id, "Архив пуст.")
+                return
+            markup = types.InlineKeyboardMarkup()
+            for id, ticker, status in tickers:
+                # Ensure deletion functionality is distinct
+                markup.add(types.InlineKeyboardButton(f"Удалить {ticker} - {status}", callback_data=f"delete_archive_{id}"))
+            bot.send_message(call.message.chat.id, "Выберите сделки для удаления:", reply_markup=markup)
+        except mysql.connector.Error as e:
+            bot.send_message(call.message.chat.id, f"Ошибка при получении данных: {e}")
+        finally:
+            cursor.close()
+            connection.close()
+
+    @bot.callback_query_handler(func=lambda call: call.data == "confirm_delete_selected")
+    def delete_selected_trades(call):
+        for trade_id in selected_trades:
+            db.delete_archived_trade(trade_id)
+        selected_trades.clear()  # Clear after deletion
+        bot.answer_callback_query(call.id, "Выбранные сделки удалены.")
+        bot.edit_message_text("Выбранные сделки успешно удалены из архива.", call.message.chat.id, call.message.message_id)
+
+    @bot.callback_query_handler(func=lambda call: call.data == "cancel_delete_selected")
+    def cancel_delete_selected(call):
+        selected_trades.clear()
+        bot.answer_callback_query(call.id, "Удаление выбранных сделок отменено.")
+        bot.edit_message_text("Удаление выбранных сделок отменено.", call.message.chat.id, call.message.message_id)
 
 ### =============================================================================
 
