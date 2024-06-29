@@ -29,7 +29,8 @@ def setup_database():
             setup_image_path VARCHAR(255),
             active BOOLEAN DEFAULT TRUE,
             direction VARCHAR(10),
-            entry_confirmed BOOLEAN DEFAULT FALSE
+            entry_confirmed BOOLEAN DEFAULT FALSE,
+            delay_until DATETIME DEFAULT NULL
         )
         ''')
         

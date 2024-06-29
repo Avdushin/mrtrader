@@ -345,10 +345,14 @@ def monitor_prices():
     connection = db.get_db_connection()
     cursor = connection.cursor()
     try:
-        cursor.execute("SELECT id, ticker, entry_point, take_profit, stop_loss FROM tickers WHERE active=1")
+        cursor.execute("SELECT id, ticker, entry_point, take_profit, stop_loss, delay_until FROM tickers WHERE active=1")
         tickers = cursor.fetchall()
         for ticker in tickers:
-            ticker_id, ticker_name, entry_point, take_profit, stop_loss = ticker
+            ticker_id, ticker_name, entry_point, take_profit, stop_loss, delay_until = ticker
+            
+            if delay_until and datetime.now() < delay_until:
+                continue
+            
             exchange, current_rate = get_current_price(ticker_name)
             if exchange is None or current_rate is None:
                 logging.error(f"Failed to fetch current rate for {ticker_name}")
@@ -359,12 +363,35 @@ def monitor_prices():
         cursor.close()
         connection.close()
 
+# def monitor_prices():
+#     logging.info("Цикл мониторинга цен...")
+#     connection = db.get_db_connection()
+#     cursor = connection.cursor()
+#     try:
+#         cursor.execute("SELECT id, ticker, entry_point, take_profit, stop_loss FROM tickers WHERE active=1")
+#         tickers = cursor.fetchall()
+#         for ticker in tickers:
+#             ticker_id, ticker_name, entry_point, take_profit, stop_loss = ticker
+#             exchange, current_rate = get_current_price(ticker_name)
+#             if exchange is None or current_rate is None:
+#                 logging.error(f"Failed to fetch current rate for {ticker_name}")
+#                 continue
+#             logging.debug(f"Processing ticker {ticker_name} on {exchange}: current_rate={current_rate}")
+#             check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id)
+#     finally:
+#         cursor.close()
+#         connection.close()
+
 def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
     connection = db.get_db_connection()
     cursor = connection.cursor()
     try:
-        cursor.execute("SELECT entry_confirmed FROM tickers WHERE id = %s", (ticker_id,))
-        entry_confirmed = cursor.fetchone()[0]
+        cursor.execute("SELECT entry_confirmed, delay_until FROM tickers WHERE id = %s", (ticker_id,))
+        entry_confirmed, delay_until = cursor.fetchone()
+        
+        if delay_until and datetime.now() < delay_until:
+            return
+
         message_text = ""
         if not entry_confirmed:
             if entry_point == 0:
@@ -373,6 +400,7 @@ def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop
             if abs(current_rate - entry_point) / entry_point < 0.015:
                 markup = types.InlineKeyboardMarkup()
                 markup.add(types.InlineKeyboardButton("Подтвердить вход", callback_data=f"confirm_entry_{ticker_id}"))
+                markup.add(types.InlineKeyboardButton("Заглушить уведомления", callback_data=f"mute_entry_{ticker_id}"))
                 message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: {current_rate})."
                 send_alert(ticker_id, message_text, reply_markup=markup)
                 return
@@ -392,6 +420,39 @@ def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop
         cursor.close()
         connection.close()
 
+# def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
+#     connection = db.get_db_connection()
+#     cursor = connection.cursor()
+#     try:
+#         cursor.execute("SELECT entry_confirmed FROM tickers WHERE id = %s", (ticker_id,))
+#         entry_confirmed = cursor.fetchone()[0]
+#         message_text = ""
+#         if not entry_confirmed:
+#             if entry_point == 0:
+#                 logging.error(f"Точка входа для {ticker_name} равна нулю, проверка будет пропущена...")
+#                 return
+#             if abs(current_rate - entry_point) / entry_point < 0.015:
+#                 markup = types.InlineKeyboardMarkup()
+#                 markup.add(types.InlineKeyboardButton("Подтвердить вход", callback_data=f"confirm_entry_{ticker_id}"))
+#                 message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: {current_rate})."
+#                 send_alert(ticker_id, message_text, reply_markup=markup)
+#                 return
+#             if not entry_confirmed and current_rate == entry_point:
+#                 message_text = f"✅ {ticker_name} достиг точки входа на {exchange}.\n"
+#                 send_alert(ticker_id, message_text, reply_markup=markup)
+#             return
+#         if current_rate >= take_profit:
+#             message_text = f"🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: {take_profit}."
+#             send_alert(ticker_id, message_text)
+#             db.update_ticker_active(ticker_id, False)
+#         if current_rate <= stop_loss:
+#             message_text = f"🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: {stop_loss}."
+#             send_alert(ticker_id, message_text)
+#             db.update_ticker_active(ticker_id, False)
+#     finally:
+#         cursor.close()
+#         connection.close()
+
 def send_alert(ticker_id, message_text, reply_markup=None):
     now = datetime.now()
     if ticker_id in last_alert_time:
@@ -400,7 +461,7 @@ def send_alert(ticker_id, message_text, reply_markup=None):
             return
     last_alert_time[ticker_id] = now
     logging.debug(f"Sending alert for {ticker_id}: {message_text}")
-    chat_id = config.ALARM_CHAT_ID  # так как это одно значение, используем его напрямую
+    chat_id = config.ALARM_CHAT_ID
     try:
         if reply_markup:
             global_bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, message_thread_id=config.ALARM_THEME_ID)
@@ -423,15 +484,79 @@ def send_alert(ticker_id, message_text, reply_markup=None):
 #             return
 #     last_alert_time[ticker_id] = now
 #     logging.debug(f"Sending alert for {ticker_id}: {message_text}")
-#     for chat_id in config.ADMIN_CHAT_IDS:
-#         try:
-#             if reply_markup:
-#                 global_bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, message_thread_id=config.ALARM_THEME_ID)
-#             else:
-#                 global_bot.send_message(chat_id=chat_id, text=message_text, message_thread_id=config.ALARM_THEME_ID)
-#             logging.info(f"Sent alert to {chat_id}: {message_text}")
-#         except Exception as e:
+#     chat_id = config.ALARM_CHAT_ID
+#     try:
+#         if reply_markup:
+#             global_bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, message_thread_id=config.ALARM_THEME_ID)
+#         else:
+#             global_bot.send_message(chat_id=chat_id, text=message_text, message_thread_id=config.ALARM_THEME_ID)
+#         logging.info(f"Sent alert to {chat_id}: {message_text}")
+#     except Exception as e:
+#         if "message thread not found" in str(e):
+#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}. Check if the thread exists.")
+#         elif "group chat was upgraded to a supergroup chat" in str(e):
+#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}. The group chat was upgraded to a supergroup chat.")
+#         else:
 #             logging.error(f"Failed to send alert to {chat_id}: {str(e)}")
+
+# def send_alert(ticker_id, message_text, reply_markup=None):
+#     now = datetime.now()
+#     if ticker_id in last_alert_time:
+#         if now - last_alert_time[ticker_id] < timedelta(minutes=5):
+#             logging.debug(f"Alert for {ticker_id} suppressed to avoid spam.")
+#             return
+#     last_alert_time[ticker_id] = now
+#     logging.debug(f"Sending alert for {ticker_id}: {message_text}")
+#     chat_id = config.ALARM_CHAT_ID  # так как это одно значение, используем его напрямую
+#     try:
+#         if reply_markup:
+#             global_bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, message_thread_id=config.ALARM_THEME_ID)
+#         else:
+#             global_bot.send_message(chat_id=chat_id, text=message_text, message_thread_id=config.ALARM_THEME_ID)
+#         logging.info(f"Sent alert to {chat_id}: {message_text}")
+#     except Exception as e:
+#         if "message thread not found" in str(e):
+#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}. Check if the thread exists.")
+#         elif "group chat was upgraded to a supergroup chat" in str(e):
+#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}. The group chat was upgraded to a supergroup chat.")
+#         else:
+#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}")
+
+def set_mute(bot, call):
+    parts = call.data.split('_')
+    ticker_id = int(parts[2])
+    minutes = int(parts[3])
+    delay_until = datetime.now() + timedelta(minutes=minutes)
+    connection = db.get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("UPDATE tickers SET delay_until = %s WHERE id = %s", (delay_until, ticker_id))
+        cursor.execute("SELECT ticker FROM tickers WHERE id = %s", (ticker_id,))
+        ticker_name = cursor.fetchone()[0]
+        connection.commit()
+        bot.send_message(call.message.chat.id, f"Уведомление для тикера {ticker_name} заглушено на {minutes} минут.", message_thread_id=config.ALARM_THEME_ID)
+    finally:
+        cursor.close()
+        connection.close()
+
+
+def set_mute(bot, call):
+    parts = call.data.split('_')
+    ticker_id = int(parts[2])
+    minutes = int(parts[3])
+    delay_until = datetime.now() + timedelta(minutes=minutes)
+    connection = db.get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("UPDATE tickers SET delay_until = %s WHERE id = %s", (delay_until, ticker_id))
+        cursor.execute("SELECT ticker FROM tickers WHERE id = %s", (ticker_id,))
+        ticker_name = cursor.fetchone()[0]
+        connection.commit()
+        bot.send_message(call.message.chat.id, f"Уведомление для тикера {ticker_name} заглушено на {minutes} минут.", message_thread_id=config.ALARM_THEME_ID)
+    finally:
+        cursor.close()
+        connection.close()
+
 
 def archive_and_delete_ticker(ticker_id):
     connection = db.get_db_connection()
@@ -474,6 +599,78 @@ def show_archive_tickers_list(bot, message):
         bot.send_message(message.chat.id, "Выберите сделку для просмотра:", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
     except mysql.connector.Error as e:
         bot.send_message(message.chat.id, f"Ошибка при получении данных: {e}", message_thread_id=config.ALARM_THEME_ID)
+    finally:
+        cursor.close()
+        connection.close()
+
+# Отложить сделку
+import re
+
+def delay_entry(bot, call):
+    ticker_id = int(call.data.split('_')[2])
+    msg = bot.send_message(call.message.chat.id, "На какое время отложим вход в сделку?\nПримеры: 30 min, 1h, 1 day, 22 минуты", message_thread_id=config.ALARM_THEME_ID)
+    bot.register_next_step_handler(msg, lambda message: process_delay_entry(bot, message, ticker_id))
+
+def process_delay_entry(bot, message, ticker_id):
+    time_str = message.text.strip().lower()
+    
+    match = re.match(r'(\d+)\s*(секунд|сек|s|seconds|second|минуты|мин|m|minutes|minute|часы|час|ч|h|hours|hour|дни|день|д|day|days|d)', time_str)
+    if not match:
+        bot.send_message(message.chat.id, "Неправильный формат. Пожалуйста, используйте допустимые форматы времени, например: 30 сек, 1 мин, 1 час, 1 день", message_thread_id=config.ALARM_THEME_ID)
+        return
+    
+    delay_value = int(match.group(1))
+    delay_unit = match.group(2)
+
+    delay_map = {
+        'секунд': 'seconds', 'сек': 'seconds', 's': 'seconds', 'seconds': 'seconds', 'second': 'seconds',
+        'минуты': 'minutes', 'мин': 'minutes', 'm': 'minutes', 'minutes': 'minutes', 'minute': 'minutes',
+        'часы': 'hours', 'час': 'hours', 'ч': 'hours', 'h': 'hours', 'hours': 'hours', 'hour': 'hours',
+        'дни': 'days', 'день': 'days', 'д': 'days', 'day': 'days', 'days': 'days', 'd': 'days'
+    }
+    
+    delay_time = timedelta(**{delay_map[delay_unit]: delay_value})
+    delay_until = datetime.now() + delay_time
+
+    connection = db.get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("UPDATE tickers SET delay_until = %s WHERE id = %s", (delay_until, ticker_id))
+        connection.commit()
+        bot.send_message(message.chat.id, f"Вход в сделку отложен на {delay_value} {delay_unit}.", message_thread_id=config.ALARM_THEME_ID)
+        schedule_delay_check(bot, ticker_id, delay_until)
+    except mysql.connector.Error as e:
+        bot.send_message(message.chat.id, f"Ошибка при отложении входа в сделку: {e}", message_thread_id=config.ALARM_THEME_ID)
+    finally:
+        cursor.close()
+        connection.close()
+
+def schedule_delay_check(bot, ticker_id, delay_until):
+    scheduler = BackgroundScheduler(timezone=pytz.timezone('Europe/Moscow'))
+    scheduler.add_job(lambda: delay_check(bot, ticker_id), 'date', run_date=delay_until)
+    scheduler.start()
+
+# def schedule_delay_check(bot, ticker_id, delay_until):
+#     delay_seconds = (delay_until - datetime.now()).total_seconds()
+#     scheduler = BackgroundScheduler(timezone=pytz.timezone('Europe/Moscow'))
+#     scheduler.add_job(lambda: delay_check(bot, ticker_id), 'date', run_date=delay_until)
+#     scheduler.start()
+
+def delay_check(bot, ticker_id):
+    connection = db.get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("SELECT ticker, entry_point FROM tickers WHERE id = %s", (ticker_id,))
+        ticker = cursor.fetchone()
+        if ticker:
+            ticker_name, entry_point = ticker
+            exchange, current_rate = get_current_price(ticker_name)
+            if exchange and current_rate:
+                markup = types.InlineKeyboardMarkup()
+                markup.add(types.InlineKeyboardButton("Подтвердить вход", callback_data=f"confirm_entry_{ticker_id}"))
+                markup.add(types.InlineKeyboardButton("Отложить сделку", callback_data=f"delay_entry_{ticker_id}"))
+                message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: {current_rate})."
+                send_alert(ticker_id, message_text, reply_markup=markup)
     finally:
         cursor.close()
         connection.close()
