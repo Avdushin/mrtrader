@@ -34,15 +34,17 @@ def initiate_add_ticker(bot, call):
     bot.answer_callback_query(call.id)
     msg = bot.send_message(call.message.chat.id, "Введите имя тикера:", message_thread_id=config.ALARM_THEME_ID)
     markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
-    bot.register_next_step_handler(msg, ask_for_exchange, bot)
+    bot.register_next_step_handler(msg, ask_for_exchange, bot, [msg.message_id])
 
-def ask_for_exchange(message, bot):
+def ask_for_exchange(message, bot, message_ids):
     ticker_name = message.text.strip().upper()
     markup = types.InlineKeyboardMarkup()
     for exchange in EXCHANGES:
         markup.add(types.InlineKeyboardButton(exchange, callback_data=f"exchange_{exchange}_{ticker_name}"))
     markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
-    bot.send_message(message.chat.id, "Выберите биржу:", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+    msg = bot.send_message(message.chat.id, "Выберите биржу:", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+    message_ids.append(message.message_id)
+    message_ids.append(msg.message_id)
 
 def handle_exchange_selection(bot, call):
     parts = call.data.split('_', 2)
@@ -56,14 +58,15 @@ def handle_exchange_selection(bot, call):
     if current_rate is None:
         bot.send_message(call.message.chat.id, "Не удалось получить текущую цену тикера, попробуйте другую биржу.", message_thread_id=config.ALARM_THEME_ID)
         return
-    bot.send_message(call.message.chat.id, f"Текущая цена {ticker_name} на {exchange}: {current_rate}", message_thread_id=config.ALARM_THEME_ID)
-    ask_for_direction(bot, call.message, ticker_name, exchange, current_rate)
+    msg = bot.send_message(call.message.chat.id, f"Текущая цена {ticker_name} на {exchange}: {current_rate}", message_thread_id=config.ALARM_THEME_ID)
+    ask_for_direction(bot, call.message, ticker_name, exchange, current_rate, [call.message.message_id, msg.message_id])
 
-def ask_for_direction(bot, message, ticker_name, exchange, current_rate):
+def ask_for_direction(bot, message, ticker_name, exchange, current_rate, message_ids):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("Long", callback_data=f"direction_long_{ticker_name}_{exchange}_{current_rate}"),
                types.InlineKeyboardButton("Short", callback_data=f"direction_short_{ticker_name}_{exchange}_{current_rate}"))
-    bot.send_message(message.chat.id, "Выберите направление сделки:", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+    msg = bot.send_message(message.chat.id, "Выберите направление сделки:", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+    message_ids.append(msg.message_id)
 
 def process_direction(bot, call):
     markup = types.InlineKeyboardMarkup()
@@ -74,10 +77,10 @@ def process_direction(bot, call):
         bot.send_message(call.message.chat.id, "Ошибка при конвертации текущего курса в число.", message_thread_id=config.ALARM_THEME_ID)
         return
     markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
-    bot.send_message(call.message.chat.id, f"Введите точку входа для {ticker_name} ({direction}):", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
-    bot.register_next_step_handler(call.message, process_entry_point, bot, ticker_name, exchange, direction, current_rate)
+    msg = bot.send_message(call.message.chat.id, f"Введите точку входа для {ticker_name} ({direction}):", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+    bot.register_next_step_handler(call.message, process_entry_point, bot, ticker_name, exchange, direction, current_rate, [call.message.message_id, msg.message_id])
 
-def process_entry_point(message, bot, ticker_name, exchange, direction, current_rate):
+def process_entry_point(message, bot, ticker_name, exchange, direction, current_rate, message_ids):
     markup = types.InlineKeyboardMarkup()
     try:
         entry_point = float(message.text)
@@ -85,10 +88,10 @@ def process_entry_point(message, bot, ticker_name, exchange, direction, current_
         bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для точки входа.", message_thread_id=config.ALARM_THEME_ID)
         return
     markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
-    bot.send_message(message.chat.id, "Введите значение тейк-профит:", message_thread_id=config.ALARM_THEME_ID)
-    bot.register_next_step_handler(message, process_take_profit, bot, ticker_name, exchange, direction, entry_point, current_rate)
+    msg = bot.send_message(message.chat.id, "Введите значение тейк-профит:", message_thread_id=config.ALARM_THEME_ID)
+    bot.register_next_step_handler(message, process_take_profit, bot, ticker_name, exchange, direction, entry_point, current_rate, message_ids + [message.message_id, msg.message_id])
 
-def process_take_profit(message, bot, ticker_name, exchange, direction, entry_point, current_rate):
+def process_take_profit(message, bot, ticker_name, exchange, direction, entry_point, current_rate, message_ids):
     markup = types.InlineKeyboardMarkup()
     try:
         take_profit = float(message.text)
@@ -96,10 +99,10 @@ def process_take_profit(message, bot, ticker_name, exchange, direction, entry_po
         bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для тейк-профит.", message_thread_id=config.ALARM_THEME_ID)
         return
     markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
-    bot.send_message(message.chat.id, "Введите значение стоп-лосс:", message_thread_id=config.ALARM_THEME_ID)
-    bot.register_next_step_handler(message, process_stop_loss, bot, ticker_name, exchange, direction, entry_point, take_profit, current_rate)
+    msg = bot.send_message(message.chat.id, "Введите значение стоп-лосс:", message_thread_id=config.ALARM_THEME_ID)
+    bot.register_next_step_handler(message, process_stop_loss, bot, ticker_name, exchange, direction, entry_point, take_profit, current_rate, message_ids + [message.message_id, msg.message_id])
 
-def process_stop_loss(message, bot, ticker_name, exchange, direction, entry_point, take_profit, current_rate):
+def process_stop_loss(message, bot, ticker_name, exchange, direction, entry_point, take_profit, current_rate, message_ids):
     markup = types.InlineKeyboardMarkup()
     try:
         stop_loss = float(message.text)
@@ -107,10 +110,10 @@ def process_stop_loss(message, bot, ticker_name, exchange, direction, entry_poin
         bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для стоп-лосс.", message_thread_id=config.ALARM_THEME_ID)
         return
     markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
-    bot.send_message(message.chat.id, "Прикрепите изображение сетапа или отправьте URL:", message_thread_id=config.ALARM_THEME_ID)
-    bot.register_next_step_handler(message, finalize_setup, bot, ticker_name, exchange, direction, entry_point, take_profit, stop_loss, current_rate)
+    msg = bot.send_message(message.chat.id, "Прикрепите изображение сетапа или отправьте URL:", message_thread_id=config.ALARM_THEME_ID)
+    bot.register_next_step_handler(message, finalize_setup, bot, ticker_name, exchange, direction, entry_point, take_profit, stop_loss, current_rate, message_ids + [message.message_id, msg.message_id])
 
-def finalize_setup(message, bot, ticker_name, exchange, direction, entry_point, take_profit, stop_loss, current_rate):
+def finalize_setup(message, bot, ticker_name, exchange, direction, entry_point, take_profit, stop_loss, current_rate, message_ids):
     setup_image_path = message.text if message.content_type == 'text' else save_photo(bot, message.photo[-1].file_id)
     leverage = 10  # Плечо по умолчанию
     try:
@@ -133,6 +136,10 @@ def finalize_setup(message, bot, ticker_name, exchange, direction, entry_point, 
             f"<b>🚀 Потенциал:</b> <code>{potential}%</code>\n"
             f"────────────────────────────────"
         )
+        
+        # Удаление сообщений
+        for msg_id in message_ids:
+            bot.delete_message(message.chat.id, msg_id)
         
         # Отправка изображения сетапа с подписью, если оно доступно
         if setup_image_path and os.path.exists(setup_image_path):
@@ -190,23 +197,6 @@ def get_current_price(ticker_name):
     logging.error(f"Failed to fetch data for {ticker_name} on all exchanges.")
     return None, None
 
-# def get_current_price(ticker_name):
-#     handler = TA_Handler(interval=Interval.INTERVAL_1_MINUTE, screener="crypto")
-#     for exchange in EXCHANGES:
-#         handler.exchange = exchange
-#         handler.symbol = ticker_name
-#         try:
-#             analysis = handler.get_analysis()
-#             if analysis:
-#                 current_rate = analysis.indicators.get("close")
-#                 if current_rate is not None:
-#                     return exchange, current_rate
-#         except Exception as e:
-#             logging.error(f"Error retrieving data from TradingView for {ticker_name} on {exchange}: {str(e)}")
-#             continue
-#     logging.error(f"Failed to fetch data for {ticker_name} on all exchanges.")
-#     return None, None
-
 def show_ticker_list(bot, message):
     tickers = db.get_all_tickers()
     markup = types.InlineKeyboardMarkup()
@@ -251,34 +241,6 @@ def show_ticker_info(bot, call):
     finally:
         cursor.close()
         connection.close()
-
-
-# def show_ticker_info(bot, call):
-#     ticker_id = call.data.split('_')[1]
-#     connection = db.get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("SELECT * FROM tickers WHERE id = %s", (ticker_id,))
-#         ticker = cursor.fetchone()
-#         if ticker:
-#             _, current_rate = get_current_price(ticker[1])
-#             info = (
-#                 f"<b>Тикер:</b> <code>{ticker[1]}</code>\n"
-#                 f"<b>Точка входа (ТВХ):</b> <code>{ticker[2]}</code>\n"
-#                 f"<b>Тейк-профит:</b> <code>{ticker[3]}</code>\n"
-#                 f"<b>Стоп-лос:</b> <code>{ticker[4]}</code>\n"
-#                 f"<b>Текущая стоимость:</b> <code>${current_rate}</code>\n"
-#                 f"<b>Сетап:</b> <code>{ticker[6]}</code>\n"
-#                 f"<b>Позиция:</b> <code>{ticker[8]}</code>"
-#             )
-#             bot.send_message(call.message.chat.id, info, parse_mode="HTML", message_thread_id=config.ALARM_THEME_ID)
-#             if ticker[6] and os.path.exists(ticker[6]):
-#                 bot.send_photo(call.message.chat.id, open(ticker[6], 'rb'))
-#     except Exception as e:
-#         bot.send_message(call.message.chat.id, f"Failed to create chart: {str(e)}", message_thread_id=config.ALARM_THEME_ID)
-#     finally:
-#         cursor.close()
-#         connection.close()
 
 def delete_ticker(bot, call):
     tickers = db.get_all_tickers()
@@ -363,25 +325,6 @@ def monitor_prices():
         cursor.close()
         connection.close()
 
-# def monitor_prices():
-#     logging.info("Цикл мониторинга цен...")
-#     connection = db.get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("SELECT id, ticker, entry_point, take_profit, stop_loss FROM tickers WHERE active=1")
-#         tickers = cursor.fetchall()
-#         for ticker in tickers:
-#             ticker_id, ticker_name, entry_point, take_profit, stop_loss = ticker
-#             exchange, current_rate = get_current_price(ticker_name)
-#             if exchange is None or current_rate is None:
-#                 logging.error(f"Failed to fetch current rate for {ticker_name}")
-#                 continue
-#             logging.debug(f"Processing ticker {ticker_name} on {exchange}: current_rate={current_rate}")
-#             check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id)
-#     finally:
-#         cursor.close()
-#         connection.close()
-
 def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
     connection = db.get_db_connection()
     cursor = connection.cursor()
@@ -420,39 +363,6 @@ def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop
         cursor.close()
         connection.close()
 
-# def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
-#     connection = db.get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("SELECT entry_confirmed FROM tickers WHERE id = %s", (ticker_id,))
-#         entry_confirmed = cursor.fetchone()[0]
-#         message_text = ""
-#         if not entry_confirmed:
-#             if entry_point == 0:
-#                 logging.error(f"Точка входа для {ticker_name} равна нулю, проверка будет пропущена...")
-#                 return
-#             if abs(current_rate - entry_point) / entry_point < 0.015:
-#                 markup = types.InlineKeyboardMarkup()
-#                 markup.add(types.InlineKeyboardButton("Подтвердить вход", callback_data=f"confirm_entry_{ticker_id}"))
-#                 message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: {current_rate})."
-#                 send_alert(ticker_id, message_text, reply_markup=markup)
-#                 return
-#             if not entry_confirmed and current_rate == entry_point:
-#                 message_text = f"✅ {ticker_name} достиг точки входа на {exchange}.\n"
-#                 send_alert(ticker_id, message_text, reply_markup=markup)
-#             return
-#         if current_rate >= take_profit:
-#             message_text = f"🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: {take_profit}."
-#             send_alert(ticker_id, message_text)
-#             db.update_ticker_active(ticker_id, False)
-#         if current_rate <= stop_loss:
-#             message_text = f"🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: {stop_loss}."
-#             send_alert(ticker_id, message_text)
-#             db.update_ticker_active(ticker_id, False)
-#     finally:
-#         cursor.close()
-#         connection.close()
-
 def send_alert(ticker_id, message_text, reply_markup=None):
     now = datetime.now()
     if ticker_id in last_alert_time:
@@ -475,52 +385,6 @@ def send_alert(ticker_id, message_text, reply_markup=None):
             logging.error(f"Failed to send alert to {chat_id}: {str(e)}. The group chat was upgraded to a supergroup chat.")
         else:
             logging.error(f"Failed to send alert to {chat_id}: {str(e)}")
-
-# def send_alert(ticker_id, message_text, reply_markup=None):
-#     now = datetime.now()
-#     if ticker_id in last_alert_time:
-#         if now - last_alert_time[ticker_id] < timedelta(minutes=5):
-#             logging.debug(f"Alert for {ticker_id} suppressed to avoid spam.")
-#             return
-#     last_alert_time[ticker_id] = now
-#     logging.debug(f"Sending alert for {ticker_id}: {message_text}")
-#     chat_id = config.ALARM_CHAT_ID
-#     try:
-#         if reply_markup:
-#             global_bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, message_thread_id=config.ALARM_THEME_ID)
-#         else:
-#             global_bot.send_message(chat_id=chat_id, text=message_text, message_thread_id=config.ALARM_THEME_ID)
-#         logging.info(f"Sent alert to {chat_id}: {message_text}")
-#     except Exception as e:
-#         if "message thread not found" in str(e):
-#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}. Check if the thread exists.")
-#         elif "group chat was upgraded to a supergroup chat" in str(e):
-#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}. The group chat was upgraded to a supergroup chat.")
-#         else:
-#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}")
-
-# def send_alert(ticker_id, message_text, reply_markup=None):
-#     now = datetime.now()
-#     if ticker_id in last_alert_time:
-#         if now - last_alert_time[ticker_id] < timedelta(minutes=5):
-#             logging.debug(f"Alert for {ticker_id} suppressed to avoid spam.")
-#             return
-#     last_alert_time[ticker_id] = now
-#     logging.debug(f"Sending alert for {ticker_id}: {message_text}")
-#     chat_id = config.ALARM_CHAT_ID  # так как это одно значение, используем его напрямую
-#     try:
-#         if reply_markup:
-#             global_bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, message_thread_id=config.ALARM_THEME_ID)
-#         else:
-#             global_bot.send_message(chat_id=chat_id, text=message_text, message_thread_id=config.ALARM_THEME_ID)
-#         logging.info(f"Sent alert to {chat_id}: {message_text}")
-#     except Exception as e:
-#         if "message thread not found" in str(e):
-#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}. Check if the thread exists.")
-#         elif "group chat was upgraded to a supergroup chat" in str(e):
-#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}. The group chat was upgraded to a supergroup chat.")
-#         else:
-#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}")
 
 def set_mute(bot, call):
     parts = call.data.split('_')
@@ -649,12 +513,6 @@ def schedule_delay_check(bot, ticker_id, delay_until):
     scheduler = BackgroundScheduler(timezone=pytz.timezone('Europe/Moscow'))
     scheduler.add_job(lambda: delay_check(bot, ticker_id), 'date', run_date=delay_until)
     scheduler.start()
-
-# def schedule_delay_check(bot, ticker_id, delay_until):
-#     delay_seconds = (delay_until - datetime.now()).total_seconds()
-#     scheduler = BackgroundScheduler(timezone=pytz.timezone('Europe/Moscow'))
-#     scheduler.add_job(lambda: delay_check(bot, ticker_id), 'date', run_date=delay_until)
-#     scheduler.start()
 
 def delay_check(bot, ticker_id):
     connection = db.get_db_connection()
