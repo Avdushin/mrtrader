@@ -176,18 +176,10 @@ def register_handlers(bot):
     def handle_direction_selection(call):
         process_direction(bot, call)
 
-    # @bot.callback_query_handler(func=lambda call: 'exchange' in call.data)
-    # def handle_exchange_selection_h(call):
-    #     handle_exchange_selection(bot, call)
-
     @bot.callback_query_handler(func=lambda call: 'exchange' in call.data)
     def handle_exchange_selection_h(call):
         handle_exchange_selection(bot, call)
-
-    # @bot.callback_query_handler(func=lambda call: 'exchange' in call.data)
-    # def handle_exchange_selection_h(call):
-    #     handle_exchange_selection(bot, call, call.message)
-
+    
     @bot.callback_query_handler(func=lambda call: call.data == "show_tickers")
     def handle_show_tickers(call):
         show_ticker_list(bot, call.message)
@@ -268,24 +260,68 @@ def register_handlers(bot):
         trade_id = int(call.data.split('_')[2])
         trade = db.get_trade_details(trade_id)
         if trade:
-            if trade['setup_image_path'] and os.path.exists(trade['setup_image_path']):
-                with open(trade['setup_image_path'], 'rb') as photo:
-                    bot.send_photo(ALARM_CHAT_ID, photo, message_thread_id=ALARM_THEME_ID)
-            else:
-                bot.send_message(ALARM_CHAT_ID, "Картинка сетапа не найдена.", message_thread_id=ALARM_THEME_ID)
+            """Расчёт потенциала"""
+            # 10x плечо
+            leverage = 10
+            potential = abs(int(((trade['take_profit'] / trade['entry_point'] - 1) * leverage * 100)))
 
-            info = (f"<b>Тикер:</b> {trade['ticker']}\n"
-                    f"<b>Направление:</b> {trade['direction']}\n"
-                    f"<b>Точка входа:</b> {trade['entry_point']}\n"
-                    f"<b>Тейк-профит:</b> {trade['take_profit']}\n"
-                    f"<b>Стоп-лос:</b> {trade['stop_loss']}\n"
-                    f"<b>Текущий курс:</b> {trade['current_rate']}\n"
-                    f"<b>Статус:</b> {'Активна' if trade['active'] else 'Неактивна'}")
+            info = (
+                f"────────────────────────────────\n"
+                f"<b>🔖 Тикер:</b> <code>{trade['ticker']}</code>\n"
+                f"────────────────────────────────\n"
+                f"<b>🔄 Направление:</b> <code>{trade['direction']}</code>\n"
+                f"<b>🎯 Точка входа (ТВХ):</b> <code>{trade['entry_point']}</code>\n"
+                f"<b>📈 Тейк-профит:</b> <code>{trade['take_profit']}</code>\n"
+                f"<b>📉 Стоп-лосс:</b> <code>{trade['stop_loss']}</code>\n"
+                f"<b>💹 Текущая стоимость:</b> <code>${trade['current_rate']}</code>\n"
+                f"<b>📝 Статус:</b> {'Активна' if trade['entry_confirmed'] else 'Неактивна'}\n"
+                f"<b>🚀 Потенциал:</b> <code>{potential}% с плечом {leverage}X</code>\n"
+                f"────────────────────────────────"
+            )
             markup = types.InlineKeyboardMarkup()
             markup.add(types.InlineKeyboardButton("Выйти из сделки", callback_data=f"cancel_trade_{trade['id']}"))
-            bot.send_message(ALARM_CHAT_ID, info, parse_mode='HTML', reply_markup=markup, message_thread_id=ALARM_THEME_ID)
+            
+            if trade['setup_image_path'] and os.path.exists(trade['setup_image_path']):
+                with open(trade['setup_image_path'], 'rb') as photo:
+                    bot.send_photo(ALARM_CHAT_ID, photo, caption=info, parse_mode='HTML', reply_markup=markup, message_thread_id=ALARM_THEME_ID)
+            else:
+                bot.send_message(ALARM_CHAT_ID, info, parse_mode='HTML', reply_markup=markup, message_thread_id=ALARM_THEME_ID)
         else:
             bot.send_message(ALARM_CHAT_ID, "Сделка не найдена.", message_thread_id=ALARM_THEME_ID)
+
+    # @bot.callback_query_handler(func=lambda call: call.data.startswith("trade_info_"))
+    # def trade_info(call):
+    #     trade_id = int(call.data.split('_')[2])
+    #     trade = db.get_trade_details(trade_id)
+    #     if trade:
+    #         if trade['setup_image_path'] and os.path.exists(trade['setup_image_path']):
+    #             with open(trade['setup_image_path'], 'rb') as photo:
+    #                 bot.send_photo(ALARM_CHAT_ID, photo, message_thread_id=ALARM_THEME_ID)
+    #         else:
+    #             bot.send_message(ALARM_CHAT_ID, "Картинка сетапа не найдена.", message_thread_id=ALARM_THEME_ID)
+            
+    #         """Расчёт потенциала"""
+    #         # 10x плече
+    #         leverage = 10
+    #         potential = abs(int(((trade['take_profit'] / trade['entry_point'] - 1) * leverage * 100)))
+           
+    #         info = (
+    #             f"────────────────────────────────\n"
+    #             f"<b>🔖 Тикер:</b> <code>{trade['ticker']}</code>\n"
+    #             f"────────────────────────────────\n"
+    #             f"<b>🔄 Направление:</b> <code>{trade['direction']}</code>\n"
+    #             f"<b>🎯 Точка входа (ТВХ):</b> <code>{trade['entry_point']}</code>\n"
+    #             f"<b>📈 Тейк-профит:</b> <code>{trade['take_profit']}</code>\n"
+    #             f"<b>📉 Стоп-лосс:</b> <code>{trade['stop_loss']}</code>\n"
+    #             f"<b>💹 Текущая стоимость:</b> <code>${trade['current_rate']}</code>\n"
+    #             f"<b>📝Статус:</b> {'Активна' if trade['entry_confirmed'] else 'Неактивна'}\n"
+    #             f"<b>🚀 Потенциал:</b> <code>{potential}% c плечом {leverage}X</code>\n"
+    #             f"────────────────────────────────")
+    #         markup = types.InlineKeyboardMarkup()
+    #         markup.add(types.InlineKeyboardButton("Выйти из сделки", callback_data=f"cancel_trade_{trade['id']}"))
+    #         bot.send_message(ALARM_CHAT_ID, info, parse_mode='HTML', reply_markup=markup, message_thread_id=ALARM_THEME_ID)
+    #     else:
+    #         bot.send_message(ALARM_CHAT_ID, "Сделка не найдена.", message_thread_id=ALARM_THEME_ID)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_trade_"))
     def cancel_trade(call):

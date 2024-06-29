@@ -305,7 +305,7 @@ def get_trade_details(trade_id):
     cursor = connection.cursor()
     try:
         cursor.execute("""
-            SELECT id, ticker, entry_point, take_profit, stop_loss, current_rate, direction, active, setup_image_path
+            SELECT id, ticker, entry_point, take_profit, stop_loss, current_rate, direction, active, setup_image_path, entry_confirmed
             FROM tickers
             WHERE id = %s
         """, (trade_id,))
@@ -319,8 +319,34 @@ def get_trade_details(trade_id):
             'current_rate': trade[5],
             'direction': trade[6],
             'active': trade[7],
-            'setup_image_path': trade[8]
+            'setup_image_path': trade[8],
+            'entry_confirmed': trade[9]
         } if trade else None
+    finally:
+        cursor.close()
+        connection.close()
+
+def get_ticker_by_name(ticker_name):
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("SELECT * FROM tickers WHERE ticker = %s", (ticker_name,))
+        ticker = cursor.fetchone()
+        return {
+            'id': ticker[0],
+            'ticker': ticker[1],
+            'entry_point': ticker[2],
+            'take_profit': ticker[3],
+            'stop_loss': ticker[4],
+            'current_rate': ticker[5],
+            'setup_image_path': ticker[6],
+            'active': ticker[7],
+            'direction': ticker[8],
+            'entry_confirmed': ticker[9]
+        } if ticker else None
+    except mysql.connector.Error as e:
+        print(f"Error retrieving ticker by name: {e}")
+        return None
     finally:
         cursor.close()
         connection.close()
