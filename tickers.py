@@ -31,20 +31,24 @@ def manage_tickers(bot, message):
 def initiate_add_ticker(bot, call):
     print("initiate_add_ticker called")
     markup = types.InlineKeyboardMarkup()
-    bot.answer_callback_query(call.id)
-    msg = bot.send_message(call.message.chat.id, "Введите имя тикера:", message_thread_id=config.ALARM_THEME_ID)
     markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
-    bot.register_next_step_handler(msg, ask_for_exchange, bot)
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(call.message.chat.id, "Введите имя тикера:", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+    bot.register_next_step_handler(msg, ask_for_exchange, bot, msg)
 
-def ask_for_exchange(message, bot):
+def ask_for_exchange(message, bot, prev_message):
     ticker_name = message.text.strip().upper()
+    bot.delete_message(message.chat.id, prev_message.message_id)
+    bot.delete_message(message.chat.id, message.message_id)
     markup = types.InlineKeyboardMarkup()
     for exchange in EXCHANGES:
         markup.add(types.InlineKeyboardButton(exchange, callback_data=f"exchange_{exchange}_{ticker_name}"))
     markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
-    bot.send_message(message.chat.id, "Выберите биржу:", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+    msg = bot.send_message(message.chat.id, "Выберите биржу:", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+    bot.register_next_step_handler_by_chat_id(message.chat.id, handle_exchange_selection, bot, msg)
 
 def handle_exchange_selection(bot, call):
+    # bot = call.bot  # Get the bot object from the call
     parts = call.data.split('_', 2)
     if len(parts) < 3:
         bot.send_message(call.message.chat.id, "Ошибка в данных. Пожалуйста, попробуйте снова.", message_thread_id=config.ALARM_THEME_ID)
@@ -56,6 +60,10 @@ def handle_exchange_selection(bot, call):
     if current_rate is None:
         bot.send_message(call.message.chat.id, "Не удалось получить текущую цену тикера, попробуйте другую биржу.", message_thread_id=config.ALARM_THEME_ID)
         return
+
+    # Удаление сообщения при успешном получении текущей стоимости
+    bot.delete_message(call.message.chat.id, call.message.message_id)
+    
     bot.send_message(call.message.chat.id, f"Текущая цена {ticker_name} на {exchange}: {current_rate}", message_thread_id=config.ALARM_THEME_ID)
     ask_for_direction(bot, call.message, ticker_name, exchange, current_rate)
 
@@ -63,9 +71,11 @@ def ask_for_direction(bot, message, ticker_name, exchange, current_rate):
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("Long", callback_data=f"direction_long_{ticker_name}_{exchange}_{current_rate}"),
                types.InlineKeyboardButton("Short", callback_data=f"direction_short_{ticker_name}_{exchange}_{current_rate}"))
-    bot.send_message(message.chat.id, "Выберите направление сделки:", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+    msg = bot.send_message(message.chat.id, "Выберите направление сделки:", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+    bot.register_next_step_handler_by_chat_id(message.chat.id, process_direction, bot, msg)
 
 def process_direction(bot, call):
+    bot.delete_message(call.message.chat.id, call.message.message_id)
     markup = types.InlineKeyboardMarkup()
     _, direction, ticker_name, exchange, current_rate_str = call.data.split('_')
     try:
@@ -74,47 +84,73 @@ def process_direction(bot, call):
         bot.send_message(call.message.chat.id, "Ошибка при конвертации текущего курса в число.", message_thread_id=config.ALARM_THEME_ID)
         return
     markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
-    bot.send_message(call.message.chat.id, f"Введите точку входа для {ticker_name} ({direction}):", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
-    bot.register_next_step_handler(call.message, process_entry_point, bot, ticker_name, exchange, direction, current_rate)
+    msg = bot.send_message(call.message.chat.id, f"Введите точку входа для {ticker_name} ({direction}):", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+    bot.register_next_step_handler(msg, process_entry_point, bot, ticker_name, exchange, direction, current_rate, msg)
 
-def process_entry_point(message, bot, ticker_name, exchange, direction, current_rate):
+def process_entry_point(message, bot, ticker_name, exchange, direction, current_rate, prev_message):
+    bot.delete_message(message.chat.id, prev_message.message_id)
+    bot.delete_message(message.chat.id, message.message_id)
     markup = types.InlineKeyboardMarkup()
     try:
         entry_point = float(message.text)
     except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для точки входа.", message_thread_id=config.ALARM_THEME_ID)
+        msg = bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для точки входа.", message_thread_id=config.ALARM_THEME_ID)
+        bot.register_next_step_handler(msg, process_entry_point, bot, ticker_name, exchange, direction, current_rate, msg)
         return
     markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
-    bot.send_message(message.chat.id, "Введите значение тейк-профит:", message_thread_id=config.ALARM_THEME_ID)
-    bot.register_next_step_handler(message, process_take_profit, bot, ticker_name, exchange, direction, entry_point, current_rate)
+    msg = bot.send_message(message.chat.id, "Введите значение тейк-профит:", message_thread_id=config.ALARM_THEME_ID)
+    bot.register_next_step_handler(msg, process_take_profit, bot, ticker_name, exchange, direction, entry_point, current_rate, msg)
 
-def process_take_profit(message, bot, ticker_name, exchange, direction, entry_point, current_rate):
+def process_take_profit(message, bot, ticker_name, exchange, direction, entry_point, current_rate, prev_message):
+    bot.delete_message(message.chat.id, prev_message.message_id)
+    bot.delete_message(message.chat.id, message.message_id)
     markup = types.InlineKeyboardMarkup()
     try:
         take_profit = float(message.text)
     except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для тейк-профит.", message_thread_id=config.ALARM_THEME_ID)
+        msg = bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для тейк-профит.", message_thread_id=config.ALARM_THEME_ID)
+        bot.register_next_step_handler(msg, process_take_profit, bot, ticker_name, exchange, direction, entry_point, current_rate, msg)
         return
     markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
-    bot.send_message(message.chat.id, "Введите значение стоп-лосс:", message_thread_id=config.ALARM_THEME_ID)
-    bot.register_next_step_handler(message, process_stop_loss, bot, ticker_name, exchange, direction, entry_point, take_profit, current_rate)
+    msg = bot.send_message(message.chat.id, "Введите значение стоп-лосс:", message_thread_id=config.ALARM_THEME_ID)
+    bot.register_next_step_handler(msg, process_stop_loss, bot, ticker_name, exchange, direction, entry_point, take_profit, current_rate, msg)
 
-def process_stop_loss(message, bot, ticker_name, exchange, direction, entry_point, take_profit, current_rate):
+def process_stop_loss(message, bot, ticker_name, exchange, direction, entry_point, take_profit, current_rate, prev_message):
+    bot.delete_message(message.chat.id, prev_message.message_id)
+    bot.delete_message(message.chat.id, message.message_id)
     markup = types.InlineKeyboardMarkup()
     try:
         stop_loss = float(message.text)
     except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для стоп-лосс.", message_thread_id=config.ALARM_THEME_ID)
+        msg = bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для стоп-лосс.", message_thread_id=config.ALARM_THEME_ID)
+        bot.register_next_step_handler(msg, process_stop_loss, bot, ticker_name, exchange, direction, entry_point, take_profit, current_rate, msg)
         return
     markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
-    bot.send_message(message.chat.id, "Прикрепите изображение сетапа или отправьте URL:", message_thread_id=config.ALARM_THEME_ID)
-    bot.register_next_step_handler(message, finalize_setup, bot, ticker_name, exchange, direction, entry_point, take_profit, stop_loss, current_rate)
+    msg = bot.send_message(message.chat.id, "Прикрепите изображение сетапа или отправьте URL:", message_thread_id=config.ALARM_THEME_ID)
+    bot.register_next_step_handler(msg, finalize_setup, bot, ticker_name, exchange, direction, entry_point, take_profit, stop_loss, current_rate, msg)
 
-def finalize_setup(message, bot, ticker_name, exchange, direction, entry_point, take_profit, stop_loss, current_rate):
+def finalize_setup(message, bot, ticker_name, exchange, direction, entry_point, take_profit, stop_loss, current_rate, prev_message):
+    bot.delete_message(message.chat.id, prev_message.message_id)
+    bot.delete_message(message.chat.id, message.message_id)
     setup_image_path = message.text if message.content_type == 'text' else save_photo(bot, message.photo[-1].file_id)
     try:
         db.add_new_ticker(ticker_name, direction, entry_point, take_profit, stop_loss, current_rate, setup_image_path)
-        bot.send_message(message.chat.id, "Тикер успешно добавлен в ваш портфель!", message_thread_id=config.ALARM_THEME_ID)
+        info = (
+            f"Тикер <code>{ticker_name}</code> добавлен в портфель сетапов!\n"
+            f"<b>Направление:</b> <code>{direction}</code>\n"
+            f"<b>Точка входа (ТВХ):</b> <code>{entry_point}</code>\n"
+            f"<b>Тейк-профит:</b> <code>{take_profit}</code>\n"
+            f"<b>Стоп-лосс:</b> <code>{stop_loss}</code>\n"
+            f"<b>Текущая стоимость:</b> <code>${current_rate}</code>\n"
+            f"<b>Сетап:</b> <code>{setup_image_path}</code>"
+        )
+        bot.send_message(message.chat.id, info, parse_mode="HTML", message_thread_id=config.ALARM_THEME_ID)
+        # Отправка изображения сетапа, если оно доступно
+        if setup_image_path and os.path.exists(setup_image_path):
+            with open(setup_image_path, 'rb') as photo:
+                bot.send_photo(message.chat.id, photo, message_thread_id=config.ALARM_THEME_ID)
+        else:
+            bot.send_message(message.chat.id, "Фото сетапа не найдено.", message_thread_id=config.ALARM_THEME_ID)
     except Exception as e:
         bot.send_message(message.chat.id, f"Ошибка при добавлении данных: {e}", message_thread_id=config.ALARM_THEME_ID)
 

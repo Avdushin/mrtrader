@@ -176,10 +176,18 @@ def register_handlers(bot):
     def handle_direction_selection(call):
         process_direction(bot, call)
 
+    # @bot.callback_query_handler(func=lambda call: 'exchange' in call.data)
+    # def handle_exchange_selection_h(call):
+    #     handle_exchange_selection(bot, call)
+
     @bot.callback_query_handler(func=lambda call: 'exchange' in call.data)
     def handle_exchange_selection_h(call):
         handle_exchange_selection(bot, call)
-    
+
+    # @bot.callback_query_handler(func=lambda call: 'exchange' in call.data)
+    # def handle_exchange_selection_h(call):
+    #     handle_exchange_selection(bot, call, call.message)
+
     @bot.callback_query_handler(func=lambda call: call.data == "show_tickers")
     def handle_show_tickers(call):
         show_ticker_list(bot, call.message)
