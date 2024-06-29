@@ -238,7 +238,19 @@ def register_handlers(bot):
         ticker_id = int(call.data.split('_')[2])
         confirm_entry(ticker_id)
         bot.answer_callback_query(call.id, "Вход в сделку подтвержден.")
-        bot.send_message(ALARM_CHAT_ID, "Вход в сделку подтвержден. Будут отправлены только уведомления о тейк-профите или стоп-лоссе.", message_thread_id=ALARM_THEME_ID)
+
+        # Кнопка "Сделки"
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("Сделки", callback_data="active_trades"))
+
+        bot.send_message(ALARM_CHAT_ID, "Вход в сделку подтвержден. Будут отправлены только уведомления о тейк-профите или стоп-лоссе.", reply_markup=markup, message_thread_id=ALARM_THEME_ID)
+
+    # @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_entry_"))
+    # def confirm_entry_handler(call):
+    #     ticker_id = int(call.data.split('_')[2])
+    #     confirm_entry(ticker_id)
+    #     bot.answer_callback_query(call.id, "Вход в сделку подтвержден.")
+    #     bot.send_message(ALARM_CHAT_ID, "Вход в сделку подтвержден. Будут отправлены только уведомления о тейк-профите или стоп-лоссе.", message_thread_id=ALARM_THEME_ID)
 
     @bot.callback_query_handler(func=lambda call: call.data == "active_trades")
     def show_active_trades(call):
