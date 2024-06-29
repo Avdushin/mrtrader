@@ -144,8 +144,42 @@ def get_current_price(ticker_name):
         except Exception as e:
             logging.error(f"Error retrieving data from TradingView for {ticker_name} on {exchange}: {str(e)}")
             continue
+    
+    # Если не нашлось пары с суффиксом "USD", ищем с суффиксом "USDT"
+    if ticker_name.endswith("USD"):
+        ticker_name_usdt = ticker_name + "T"
+        for exchange in EXCHANGES:
+            handler.exchange = exchange
+            handler.symbol = ticker_name_usdt
+            try:
+                analysis = handler.get_analysis()
+                if analysis:
+                    current_rate = analysis.indicators.get("close")
+                    if current_rate is not None:
+                        return exchange, current_rate
+            except Exception as e:
+                logging.error(f"Error retrieving data from TradingView for {ticker_name_usdt} on {exchange}: {str(e)}")
+                continue
+    
     logging.error(f"Failed to fetch data for {ticker_name} on all exchanges.")
     return None, None
+
+# def get_current_price(ticker_name):
+#     handler = TA_Handler(interval=Interval.INTERVAL_1_MINUTE, screener="crypto")
+#     for exchange in EXCHANGES:
+#         handler.exchange = exchange
+#         handler.symbol = ticker_name
+#         try:
+#             analysis = handler.get_analysis()
+#             if analysis:
+#                 current_rate = analysis.indicators.get("close")
+#                 if current_rate is not None:
+#                     return exchange, current_rate
+#         except Exception as e:
+#             logging.error(f"Error retrieving data from TradingView for {ticker_name} on {exchange}: {str(e)}")
+#             continue
+#     logging.error(f"Failed to fetch data for {ticker_name} on all exchanges.")
+#     return None, None
 
 def show_ticker_list(bot, message):
     tickers = db.get_all_tickers()
@@ -300,15 +334,18 @@ def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop
         entry_confirmed = cursor.fetchone()[0]
         message_text = ""
         if not entry_confirmed:
+            if entry_point == 0:
+                logging.error(f"Точка входа для {ticker_name} равна нулю, проверка будет пропущена...")
+                return
             if abs(current_rate - entry_point) / entry_point < 0.015:
                 markup = types.InlineKeyboardMarkup()
                 markup.add(types.InlineKeyboardButton("Подтвердить вход", callback_data=f"confirm_entry_{ticker_id}"))
                 message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: {current_rate})."
-                send_alert(ticker_id, message_text, reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+                send_alert(ticker_id, message_text, reply_markup=markup)
                 return
             if not entry_confirmed and current_rate == entry_point:
                 message_text = f"✅ {ticker_name} достиг точки входа на {exchange}.\n"
-                send_alert(ticker_id, message_text, reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+                send_alert(ticker_id, message_text, reply_markup=markup)
             return
         if current_rate >= take_profit:
             message_text = f"🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: {take_profit}."
@@ -330,15 +367,38 @@ def send_alert(ticker_id, message_text, reply_markup=None):
             return
     last_alert_time[ticker_id] = now
     logging.debug(f"Sending alert for {ticker_id}: {message_text}")
-    for chat_id in config.ADMIN_CHAT_IDS:
-        try:
-            if reply_markup:
-                global_bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, message_thread_id=config.ALARM_THEME_ID)
-            else:
-                global_bot.send_message(chat_id=chat_id, text=message_text, message_thread_id=config.ALARM_THEME_ID)
-            logging.info(f"Sent alert to {chat_id}: {message_text}")
-        except Exception as e:
+    chat_id = config.ALARM_CHAT_ID  # так как это одно значение, используем его напрямую
+    try:
+        if reply_markup:
+            global_bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, message_thread_id=config.ALARM_THEME_ID)
+        else:
+            global_bot.send_message(chat_id=chat_id, text=message_text, message_thread_id=config.ALARM_THEME_ID)
+        logging.info(f"Sent alert to {chat_id}: {message_text}")
+    except Exception as e:
+        if "message thread not found" in str(e):
+            logging.error(f"Failed to send alert to {chat_id}: {str(e)}. Check if the thread exists.")
+        elif "group chat was upgraded to a supergroup chat" in str(e):
+            logging.error(f"Failed to send alert to {chat_id}: {str(e)}. The group chat was upgraded to a supergroup chat.")
+        else:
             logging.error(f"Failed to send alert to {chat_id}: {str(e)}")
+
+# def send_alert(ticker_id, message_text, reply_markup=None):
+#     now = datetime.now()
+#     if ticker_id in last_alert_time:
+#         if now - last_alert_time[ticker_id] < timedelta(minutes=5):
+#             logging.debug(f"Alert for {ticker_id} suppressed to avoid spam.")
+#             return
+#     last_alert_time[ticker_id] = now
+#     logging.debug(f"Sending alert for {ticker_id}: {message_text}")
+#     for chat_id in config.ADMIN_CHAT_IDS:
+#         try:
+#             if reply_markup:
+#                 global_bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, message_thread_id=config.ALARM_THEME_ID)
+#             else:
+#                 global_bot.send_message(chat_id=chat_id, text=message_text, message_thread_id=config.ALARM_THEME_ID)
+#             logging.info(f"Sent alert to {chat_id}: {message_text}")
+#         except Exception as e:
+#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}")
 
 def archive_and_delete_ticker(ticker_id):
     connection = db.get_db_connection()
