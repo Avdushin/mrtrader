@@ -1,4 +1,3 @@
-# db.py
 import mysql.connector
 from datetime import datetime
 from config import DB_CONFIG, ADMIN_IDS, IMAGE_UPLOAD_PATH
@@ -62,7 +61,6 @@ def setup_database():
         );
        ''')
                 
-        # Добавление администраторов
         for admin_id in ADMIN_IDS:
             cursor.execute("INSERT IGNORE INTO admins (user_id) VALUES (%s)", (admin_id,))
         db.commit()
@@ -72,7 +70,6 @@ def setup_database():
         cursor.close()
         db.close()
 
-# Темы
 def set_user_theme(user_id, theme):
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -94,7 +91,6 @@ def get_user_theme(user_id):
         cursor.close()
         connection.close()
 
-""" Админский блок """
 def add_admin(user_id):
     db = get_db_connection()
     cursor = db.cursor()
@@ -126,21 +122,8 @@ def is_admin(user_id):
         cursor.close()
         db.close()
 
-# def get_admins():
-#     db = get_db_connection()
-#     cursor = db.cursor()
-#     try:
-#         cursor.execute("SELECT user_id FROM admins")
-#         admins = cursor.fetchall()
-#         return [admin[0] for admin in admins] 
-#     finally:
-#         cursor.close()
-#         db.close()
-
 def get_admins():
-    # Считываем ID администраторов из .env
     env_admins = set(config.ADMIN_IDS)
-    # Получаем список администраторов из базы данных
     db_admins = set()
     try:
         connection = get_db_connection()
@@ -151,13 +134,8 @@ def get_admins():
     finally:
         if connection:
             connection.close()
-    # Объединяем оба списка
     return list(env_admins.union(db_admins))
 
-
-""" Тикеры """
-
-# Добавление тикера
 def add_new_ticker(ticker_name, direction, entry_point, take_profit, stop_loss, current_rate, setup_image_path):
     entry_point = round(entry_point, 4)
     take_profit = round(take_profit, 4)
@@ -177,7 +155,7 @@ def add_new_ticker(ticker_name, direction, entry_point, take_profit, stop_loss, 
     finally:
         cursor.close()
         connection.close()
-# Список всех тикеров
+
 def get_all_tickers():
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -189,18 +167,28 @@ def get_all_tickers():
         cursor.close()
         connection.close()
 
-# Удаление тикера
+def get_ticker_name(ticker_id):
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("SELECT ticker FROM tickers WHERE id = %s", (ticker_id,))
+        result = cursor.fetchone()
+        if result:
+            return result[0]
+        return None
+    finally:
+        cursor.close()
+        connection.close()
+
 def delete_ticker(ticker_id):
     connection = get_db_connection()
     cursor = connection.cursor()
     try:
-        # First, fetch the path of the setup image for the ticker
         cursor.execute("SELECT setup_image_path FROM tickers WHERE id = %s", (ticker_id,))
         setup_image_path = cursor.fetchone()
         if setup_image_path and os.path.exists(setup_image_path[0]):
-            os.remove(setup_image_path[0])  # Delete the file if it exists
+            os.remove(setup_image_path[0])
 
-        # Then, delete the ticker from the database
         cursor.execute("DELETE FROM tickers WHERE id = %s", (ticker_id,))
         connection.commit()
     except mysql.connector.Error as e:
@@ -222,7 +210,6 @@ def get_setup_image_path(ticker_id):
         cursor.close()
         connection.close()
 
-# Обновление тикера
 def update_ticker(ticker_id, field, new_value):
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -249,7 +236,6 @@ def update_ticker_field(ticker_id, field, new_value):
         cursor.close()
         connection.close()
 
-# Ticker's monitoring
 def update_ticker_active(ticker_id, active_status):
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -262,7 +248,6 @@ def update_ticker_active(ticker_id, active_status):
         cursor.close()
         connection.close()
 
-# Вход в сделкb
 def confirm_entry(ticker_id):
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -273,7 +258,6 @@ def confirm_entry(ticker_id):
         cursor.close()
         connection.close()
 
-# Активные сделки
 def get_active_trades():
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -298,7 +282,6 @@ def get_active_trades():
         cursor.close()
         connection.close()
 
-# Отмена сделки (из списка активных)
 def cancel_trade(trade_id):
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -313,7 +296,6 @@ def cancel_trade(trade_id):
         cursor.close()
         connection.close()
 
-# Детали сделки   
 def get_trade_details(trade_id):
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -365,31 +347,25 @@ def get_ticker_by_name(ticker_name):
         cursor.close()
         connection.close()
 
-# Архивация тикеров
 def archive_tickers():
     connection = get_db_connection()
     cursor = connection.cursor()
     try:
-        # Выборка всех неактивных тикеров
         cursor.execute("SELECT * FROM tickers WHERE active = 0")
         tickers = cursor.fetchall()
         logging.debug(f"Archiving tickers: {tickers}") 
 
         for ticker in tickers:
-            # Убедитесь, что количество переменных соответствует количеству полей в запросе
             id, ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path, active, direction, _ = ticker
 
-            # Определение статуса сделки
             status = "прибыль" if current_rate >= take_profit else "убыток"
             close_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # Вставка в архив
             cursor.execute("""
             INSERT INTO archive (ticker, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction, close_date, status)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction, close_date, status))
 
-            # Удаление из основной таблицы
             cursor.execute("DELETE FROM tickers WHERE id = %s", (id,))
 
         connection.commit()
@@ -403,18 +379,15 @@ def archive_and_remove_ticker(ticker_id, current_rate, status):
     connection = get_db_connection()
     cursor = connection.cursor()
     try:
-        # Получаем данные тикера для архивации
         cursor.execute("SELECT ticker, entry_point, take_profit, stop_loss, setup_image_path, direction FROM tickers WHERE id = %s", (ticker_id,))
         ticker = cursor.fetchone()
         if ticker:
             ticker_name, entry_point, take_profit, stop_loss, setup_image_path, direction = ticker
             close_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # Вставка в архив
             cursor.execute("""
             INSERT INTO archive (ticker, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction, close_date, status)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction, close_date, status))
-            # Удаление из таблицы tickers
             cursor.execute("DELETE FROM tickers WHERE id = %s", (ticker_id,))
         connection.commit()
     except mysql.connector.Error as e:
@@ -423,12 +396,15 @@ def archive_and_remove_ticker(ticker_id, current_rate, status):
         cursor.close()
         connection.close()
 
-
-# Удаление архивной сделки
 def delete_archived_trade(trade_id):
     connection = get_db_connection()
     cursor = connection.cursor()
     try:
+        cursor.execute("SELECT setup_image_path FROM archive WHERE id = %s", (trade_id,))
+        setup_image_path = cursor.fetchone()
+        if setup_image_path and os.path.exists(setup_image_path[0]):
+            os.remove(setup_image_path[0])
+            
         cursor.execute("DELETE FROM archive WHERE id = %s", (trade_id,))
         connection.commit()
     except mysql.connector.Error as e:
@@ -437,30 +413,16 @@ def delete_archived_trade(trade_id):
         cursor.close()
         connection.close()
 
-# def delete_archived_trade(trade_id):
-#     connection = get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         # Получить путь к изображению для удаления файла, если он существует
-#         cursor.execute("SELECT setup_image_path FROM archive WHERE id = %s", (trade_id,))
-#         setup_image_path = cursor.fetchone()
-#         if setup_image_path and os.path.exists(setup_image_path[0]):
-#             os.remove(setup_image_path[0])
-
-#         # Удаление сделки из архива
-#         cursor.execute("DELETE FROM archive WHERE id = %s", (trade_id,))
-#         connection.commit()
-#     except mysql.connector.Error as e:
-#         print(f"Error deleting archived trade: {e}")
-#     finally:
-#         cursor.close()
-#         connection.close()
-
-# Удаление всех сделок из архива
 def delete_all_archived_trades():
     connection = get_db_connection()
     cursor = connection.cursor()
     try:
+        cursor.execute("SELECT setup_image_path FROM archive")
+        paths = cursor.fetchall()
+        for path in paths:
+            if path[0] and os.path.exists(path[0]):
+                os.remove(path[0])
+
         cursor.execute("DELETE FROM archive")
         connection.commit()
     except mysql.connector.Error as e:
@@ -468,26 +430,6 @@ def delete_all_archived_trades():
     finally:
         cursor.close()
         connection.close()
-
-# def delete_all_archived_trades():
-#     connection = get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         # Удаление всех изображений перед очисткой архива
-#         cursor.execute("SELECT setup_image_path FROM archive")
-#         image_paths = cursor.fetchall()
-#         for path in image_paths:
-#             if path[0] and os.path.exists(path[0]):
-#                 os.remove(path[0])
-
-#         # Удаление всех записей из архива
-#         cursor.execute("DELETE FROM archive")
-#         connection.commit()
-#     except mysql.connector.Error as e:
-#         print(f"Error deleting all archived trades: {e}")
-#     finally:
-#         cursor.close()
-#         connection.close()
 
 def get_archive_setup_image_path(trade_id):
     connection = get_db_connection()
@@ -513,8 +455,6 @@ def get_all_archive_image_paths():
         cursor.close()
         connection.close()
 
-"""CHATS"""
-# Получение всех чатов
 def get_all_chats():
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -525,7 +465,6 @@ def get_all_chats():
         cursor.close()
         connection.close()
 
-# Добавление чата
 def add_chat_to_db(chat_id):
     db = get_db_connection()
     cursor = db.cursor()

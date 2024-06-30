@@ -1,10 +1,11 @@
-# commands.py
 from telebot import types, apihelper
 from db import confirm_entry
 from tickers import *
 from ROI import calculate_roi
 from config import PREFERRED_CHAT_ID, ALARM_CHAT_ID, ALARM_THEME_ID
+from urllib.parse import urlparse
 import mysql.connector
+import os
 
 # Global variable to track selected trades
 selected_trades = set()
@@ -14,7 +15,6 @@ def register_handlers(bot):
     def send_welcome(message):
         chat_id = message.chat.id
         logging.info(f"Received chat ID: {chat_id}")
-        # if chat_id == ALARM_CHAT_ID:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.row(types.KeyboardButton("📈 Тикеры"), types.KeyboardButton("Архив сделок"), types.KeyboardButton("ℹ️ Помощь"))
         try:
@@ -37,7 +37,7 @@ def register_handlers(bot):
     @bot.message_handler(commands=['archive'])
     @bot.message_handler(func=lambda message: message.text == "Архив сделок")
     def show_archive(message):
-        archive_tickers_list(bot, message)
+        show_archive_tickers_list(bot, message)
 
     @bot.message_handler(commands=['help'])
     @bot.message_handler(func=lambda message: message.text == "ℹ️ Помощь")
@@ -70,9 +70,13 @@ def register_handlers(bot):
                     f"────────────────────────────────"
                 )
 
-                if trade[6] and os.path.exists(trade[6]):
-                    with open(trade[6], 'rb') as photo:
-                        bot.send_photo(config.ALARM_CHAT_ID, photo, caption=info, parse_mode='HTML', message_thread_id=config.ALARM_THEME_ID)
+                parsed_url = urlparse(trade[6])
+                if trade[6] and (os.path.exists(trade[6]) or parsed_url.scheme in ('http', 'https')):
+                    if os.path.exists(trade[6]):
+                        with open(trade[6], 'rb') as photo:
+                            bot.send_photo(config.ALARM_CHAT_ID, photo, caption=info, parse_mode='HTML', message_thread_id=config.ALARM_THEME_ID)
+                    else:
+                        bot.send_photo(config.ALARM_CHAT_ID, trade[6], caption=info, parse_mode='HTML', message_thread_id=config.ALARM_THEME_ID)
                 else:
                     bot.send_message(config.ALARM_CHAT_ID, info, parse_mode="HTML", message_thread_id=config.ALARM_THEME_ID)
             else:
@@ -83,48 +87,22 @@ def register_handlers(bot):
             cursor.close()
             connection.close()
 
-    # @bot.callback_query_handler(func=lambda call: call.data.startswith("archive_"))
-    # def show_archived_trade(call):
-    #     trade_id = int(call.data.split('_')[1])
-    #     connection = db.get_db_connection()
-    #     cursor = connection.cursor()
-    #     try:
-    #         cursor.execute("SELECT * FROM archive WHERE id = %s", (trade_id,))
-    #         trade = cursor.fetchone()
-    #         if trade:
-    #             info = (
-    #                 f"<b>Тикер:</b> <code>{trade[1]}</code>\n"
-    #                 f"<b>Точка входа:</b> <code>{trade[2]}</code>\n"
-    #                 f"<b>Тейк-профит:</b> <code>{trade[3]}</code>\n"
-    #                 f"<b>Стоп-лосс:</b> <code>{trade[4]}</code>\n"
-    #                 f"<b>Текущий курс:</b> <code>{trade[5]}</code>\n"
-    #                 f"<b>Дата закрытия:</b> <code>{trade[8].strftime('%Y-%m-%d %H:%M:%S')}</code>\n"
-    #                 f"<b>Статус:</b> <code>{trade[9]}</code>"
-    #             )
-    #             bot.send_message(config.ALARM_CHAT_ID, info, parse_mode="HTML", message_thread_id=config.ALARM_THEME_ID)
-    #             if trade[6] and os.path.exists(trade[6]):
-    #                 with open(trade[6], 'rb') as photo:
-    #                     bot.send_photo(config.ALARM_CHAT_ID, photo, message_thread_id=config.ALARM_THEME_ID)
-    #         else:
-    #             bot.send_message(config.ALARM_CHAT_ID, "Сделка не найдена.", message_thread_id=config.ALARM_THEME_ID)
-    #     except Exception as e:
-    #         bot.send_message(config.ALARM_CHAT_ID, f"Ошибка при получении данных: {str(e)}", message_thread_id=config.ALARM_THEME_ID)
-    #     finally:
-    #         cursor.close()
-    #         connection.close()
-
     @bot.callback_query_handler(func=lambda call: call.data == "clear_all_archive")
     def confirm_clear_all_archive(call):
         markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("Подтвердить", callback_data="confirm_clear_all"),
-                   types.InlineKeyboardButton("Отмена", callback_data="cancel_clear_all"))
-        bot.send_message(ALARM_CHAT_ID, "Вы уверены, что хотите очистить архив сделок?", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+        markup.add(types.InlineKeyboardButton("Да", callback_data="confirm_clear_all"),
+                   types.InlineKeyboardButton("Нет", callback_data="cancel_clear_all"))
+        bot.send_message(ALARM_CHAT_ID, "Вы действительно хотите очистить архив?", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
 
     @bot.callback_query_handler(func=lambda call: call.data == "confirm_clear_all")
     def clear_all_archive(call):
-        db.delete_all_archived_trades()
-        bot.answer_callback_query(call.id, "Архив сделок полностью очищен.")
-        bot.send_message(ALARM_CHAT_ID, "Все сделки из архива удалены.", message_thread_id=ALARM_THEME_ID)
+        delete_all_archive_trades(bot, call)
+
+    # @bot.callback_query_handler(func=lambda call: call.data == "confirm_clear_all")
+    # def clear_all_archive(call):
+    #     db.delete_all_archived_trades()
+    #     bot.answer_callback_query(call.id, "Архив сделок полностью очищен.")
+    #     bot.send_message(ALARM_CHAT_ID, "Все сделки из архива удалены.", message_thread_id=ALARM_THEME_ID)
 
     @bot.callback_query_handler(func=lambda call: call.data == "cancel_clear_all")
     def cancel_clear_all(call):
@@ -132,23 +110,30 @@ def register_handlers(bot):
         bot.send_message(ALARM_CHAT_ID, "Очистка архива сделок отменена.", message_thread_id=ALARM_THEME_ID)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("delete_archive_"))
-    def delete_selected_archived(bot, call):
+    def delete_selected_archived(call):
         trade_id = int(call.data.split('_')[2])
         setup_image_path = db.get_archive_setup_image_path(trade_id)
         
-        # Удаление сделки из архива
         db.delete_archived_trade(trade_id)
         
-        # Удаление изображения, если оно существует
         if setup_image_path and os.path.exists(setup_image_path):
             os.remove(setup_image_path)
         
         bot.answer_callback_query(call.id, "Архивная сделка удалена.")
         bot.send_message(ALARM_CHAT_ID, "Сделка успешно удалена из архива.", message_thread_id=ALARM_THEME_ID)
 
+    # @bot.callback_query_handler(func=lambda call: call.data.startswith("delete_archive_"))
     # def delete_selected_archived(call):
     #     trade_id = int(call.data.split('_')[2])
+    #     setup_image_path = db.get_archive_setup_image_path(trade_id)
+        
+    #     # Удаление сделки из архива
     #     db.delete_archived_trade(trade_id)
+        
+    #     # Удаление изображения, если оно существует
+    #     if setup_image_path and os.path.exists(setup_image_path):
+    #         os.remove(setup_image_path)
+        
     #     bot.answer_callback_query(call.id, "Архивная сделка удалена.")
     #     bot.send_message(ALARM_CHAT_ID, "Сделка успешно удалена из архива.", message_thread_id=ALARM_THEME_ID)
 
@@ -165,7 +150,8 @@ def register_handlers(bot):
             markup = types.InlineKeyboardMarkup()
             for id, ticker, status in tickers:
                 markup.add(types.InlineKeyboardButton(f"Удалить {ticker} - {status}", callback_data=f"delete_archive_{id}"))
-            bot.send_message(ALARM_CHAT_ID, "Выберите сделки для удаления:", reply_markup=markup, message_thread_id=ALARM_THEME_ID)
+            markup.add(types.InlineKeyboardButton("Очистить архив", callback_data="clear_all_archive"))
+            bot.send_message(ALARM_CHAT_ID, "Выберите сделки для удаления или очистите весь архив:", reply_markup=markup, message_thread_id=ALARM_THEME_ID)
         except mysql.connector.Error as e:
             bot.send_message(ALARM_CHAT_ID, f"Ошибка при получении данных: {e}", message_thread_id=ALARM_THEME_ID)
         finally:
@@ -268,13 +254,6 @@ def register_handlers(bot):
 
         bot.send_message(ALARM_CHAT_ID, "Вход в сделку подтвержден. Будут отправлены только уведомления о тейк-профите или стоп-лоссе.", reply_markup=markup, message_thread_id=ALARM_THEME_ID)
 
-    # @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_entry_"))
-    # def confirm_entry_handler(call):
-    #     ticker_id = int(call.data.split('_')[2])
-    #     confirm_entry(ticker_id)
-    #     bot.answer_callback_query(call.id, "Вход в сделку подтвержден.")
-    #     bot.send_message(ALARM_CHAT_ID, "Вход в сделку подтвержден. Будут отправлены только уведомления о тейк-профите или стоп-лоссе.", message_thread_id=ALARM_THEME_ID)
-
     @bot.callback_query_handler(func=lambda call: call.data == "active_trades")
     def show_active_trades(call):
         active_trades = db.get_active_trades()
@@ -295,8 +274,6 @@ def register_handlers(bot):
         trade_id = int(call.data.split('_')[2])
         trade = db.get_trade_details(trade_id)
         if trade:
-            """Расчёт потенциала"""
-            # 10x плечо
             leverage = 10
             potential = abs(int(((trade['take_profit'] / trade['entry_point'] - 1) * leverage * 100)))
 
@@ -315,10 +292,14 @@ def register_handlers(bot):
             )
             markup = types.InlineKeyboardMarkup()
             markup.add(types.InlineKeyboardButton("Выйти из сделки", callback_data=f"cancel_trade_{trade['id']}"))
-            
-            if trade['setup_image_path'] and os.path.exists(trade['setup_image_path']):
-                with open(trade['setup_image_path'], 'rb') as photo:
-                    bot.send_photo(ALARM_CHAT_ID, photo, caption=info, parse_mode='HTML', reply_markup=markup, message_thread_id=ALARM_THEME_ID)
+
+            parsed_url = urlparse(trade['setup_image_path'])
+            if trade['setup_image_path'] and (os.path.exists(trade['setup_image_path']) or parsed_url.scheme in ('http', 'https')):
+                if os.path.exists(trade['setup_image_path']):
+                    with open(trade['setup_image_path'], 'rb') as photo:
+                        bot.send_photo(ALARM_CHAT_ID, photo, caption=info, parse_mode='HTML', reply_markup=markup, message_thread_id=ALARM_THEME_ID)
+                else:
+                    bot.send_photo(ALARM_CHAT_ID, trade['setup_image_path'], caption=info, parse_mode='HTML', reply_markup=markup, message_thread_id=ALARM_THEME_ID)
             else:
                 bot.send_message(ALARM_CHAT_ID, info, parse_mode='HTML', reply_markup=markup, message_thread_id=ALARM_THEME_ID)
         else:
@@ -331,12 +312,10 @@ def register_handlers(bot):
         bot.answer_callback_query(call.id, "Сделка отменена.")
         bot.send_message(ALARM_CHAT_ID, "Сделка успешно отменена.", message_thread_id=ALARM_THEME_ID)
 
-    # Отложить сделку
     @bot.callback_query_handler(func=lambda call: call.data.startswith("delay_entry_"))
     def handle_delay_entry(call):
         delay_entry(bot, call)
 
-    # Заглушить сделку
     @bot.callback_query_handler(func=lambda call: call.data.startswith("mute_entry_"))
     def handle_mute_entry(call):
         mute_entry(bot, call)
@@ -344,3 +323,13 @@ def register_handlers(bot):
     @bot.callback_query_handler(func=lambda call: call.data.startswith("set_mute_"))
     def handle_set_mute(call):
         set_mute(bot, call)
+
+def delete_all_archive_trades(bot, call):
+    image_paths = db.get_all_archive_image_paths()
+    for path in image_paths:
+        if path and os.path.exists(path):
+            os.remove(path)
+    
+    db.delete_all_archived_trades()
+    bot.answer_callback_query(call.id, "Архив сделок полностью очищен.")
+    bot.send_message(ALARM_CHAT_ID, "Все сделки из архива удалены.", message_thread_id=ALARM_THEME_ID)

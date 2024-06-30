@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from tradingview_ta import TA_Handler, Interval, Exchange
 from apscheduler.schedulers.background import BackgroundScheduler
 from config import PREFERRED_CHAT_ID, ALARM_CHAT_ID, ALARM_THEME_ID
+from urllib.parse import urlparse
 import pytz
 import config
 import os
@@ -113,6 +114,9 @@ def process_stop_loss(message, bot, ticker_name, exchange, direction, entry_poin
     msg = bot.send_message(message.chat.id, "Прикрепите изображение сетапа или отправьте URL:", message_thread_id=config.ALARM_THEME_ID)
     bot.register_next_step_handler(message, finalize_setup, bot, ticker_name, exchange, direction, entry_point, take_profit, stop_loss, current_rate, message_ids + [message.message_id, msg.message_id])
 
+import os
+from urllib.parse import urlparse
+
 def finalize_setup(message, bot, ticker_name, exchange, direction, entry_point, take_profit, stop_loss, current_rate, message_ids):
     setup_image_path = message.text if message.content_type == 'text' else save_photo(bot, message.photo[-1].file_id)
     leverage = 10  # Плечо по умолчанию
@@ -132,7 +136,7 @@ def finalize_setup(message, bot, ticker_name, exchange, direction, entry_point, 
             f"<b>📈 Тейк-профит:</b> <code>{take_profit}</code>\n"
             f"<b>📉 Стоп-лосс:</b> <code>{stop_loss}</code>\n"
             f"<b>💹 Текущая стоимость:</b> <code>${current_rate}</code>\n"
-            f"<b>🖼 Сетап:</b> <code>{setup_image_path if os.path.exists(setup_image_path) else 'Нет изображения'}</code>\n"
+            f"<b>🖼 Сетап:</b> <code>{setup_image_path}</code>\n"
             f"<b>🚀 Потенциал:</b> <code>{potential}%</code>\n"
             f"────────────────────────────────"
         )
@@ -141,15 +145,20 @@ def finalize_setup(message, bot, ticker_name, exchange, direction, entry_point, 
         for msg_id in message_ids:
             bot.delete_message(message.chat.id, msg_id)
         
-        # Отправка изображения сетапа с подписью, если оно доступно
-        if setup_image_path and os.path.exists(setup_image_path):
-            with open(setup_image_path, 'rb') as photo:
-                bot.send_photo(message.chat.id, photo, caption=info, parse_mode='HTML', message_thread_id=config.ALARM_THEME_ID)
+        # Проверка, является ли путь изображением на диске или URL-адресом
+        parsed_url = urlparse(setup_image_path)
+        if setup_image_path and (os.path.exists(setup_image_path) or parsed_url.scheme in ('http', 'https')):
+            if os.path.exists(setup_image_path):
+                with open(setup_image_path, 'rb') as photo:
+                    bot.send_photo(message.chat.id, photo, caption=info, parse_mode='HTML', message_thread_id=config.ALARM_THEME_ID)
+            else:
+                bot.send_photo(message.chat.id, setup_image_path, caption=info, parse_mode='HTML', message_thread_id=config.ALARM_THEME_ID)
         else:
             bot.send_message(message.chat.id, info, parse_mode="HTML", message_thread_id=config.ALARM_THEME_ID)
             bot.send_message(message.chat.id, "Фото сетапа не найдено.", message_thread_id=config.ALARM_THEME_ID)
     except Exception as e:
         bot.send_message(message.chat.id, f"Ошибка при добавлении данных: {e}", message_thread_id=config.ALARM_THEME_ID)
+
 
 def save_photo(bot, file_id):
     file_info = bot.get_file(file_id)
@@ -228,19 +237,25 @@ def show_ticker_info(bot, call):
                 f"<b>🚀 Потенциал:</b> <code>{potential}%</code>\n"
                 f"────────────────────────────────"
             )
-            
-            # Отправка фото сетапа с подписью, если оно доступно
-            if ticker[6] and os.path.exists(ticker[6]):
-                with open(ticker[6], 'rb') as photo:
-                    bot.send_photo(call.message.chat.id, photo, caption=info, parse_mode='HTML', message_thread_id=config.ALARM_THEME_ID)
+
+            parsed_url = urlparse(ticker[6])
+            if ticker[6] and (os.path.exists(ticker[6]) or parsed_url.scheme in ('http', 'https')):
+                if os.path.exists(ticker[6]):
+                    with open(ticker[6], 'rb') as photo:
+                        bot.send_photo(call.message.chat.id, photo, caption=info, parse_mode='HTML', message_thread_id=config.ALARM_THEME_ID)
+                else:
+                    bot.send_photo(call.message.chat.id, ticker[6], caption=info, parse_mode='HTML', message_thread_id=config.ALARM_THEME_ID)
             else:
                 bot.send_message(call.message.chat.id, info, parse_mode="HTML", message_thread_id=config.ALARM_THEME_ID)
                 bot.send_message(call.message.chat.id, "Фото сетапа не найдено.", message_thread_id=config.ALARM_THEME_ID)
+        else:
+            bot.send_message(call.message.chat.id, "Тикер не найден.", message_thread_id=config.ALARM_THEME_ID)
     except Exception as e:
         bot.send_message(call.message.chat.id, f"Ошибка при получении данных: {str(e)}", message_thread_id=config.ALARM_THEME_ID)
     finally:
         cursor.close()
         connection.close()
+
 
 def delete_ticker(bot, call):
     tickers = db.get_all_tickers()
@@ -255,6 +270,7 @@ def confirm_delete_ticker(bot, call):
         bot.send_message(call.message.chat.id, "Произошла ошибка при обработке вашего запроса.", message_thread_id=config.ALARM_THEME_ID)
         return
     ticker_id = int(parts[1])
+    ticker_name = db.get_ticker_name(ticker_id)
     setup_image_path = db.get_setup_image_path(ticker_id)
     
     # Удаление тикера из базы данных
@@ -265,7 +281,25 @@ def confirm_delete_ticker(bot, call):
         os.remove(setup_image_path)
     
     bot.answer_callback_query(call.id, "Тикер удален!")
-    bot.send_message(call.message.chat.id, "Тикер успешно удален.", message_thread_id=config.ALARM_THEME_ID)
+    bot.send_message(call.message.chat.id, f"Тикер {ticker_name} успешно удален.", message_thread_id=config.ALARM_THEME_ID)
+
+# def confirm_delete_ticker(bot, call):
+#     parts = call.data.split("_")
+#     if len(parts) < 2:
+#         bot.send_message(call.message.chat.id, "Произошла ошибка при обработке вашего запроса.", message_thread_id=config.ALARM_THEME_ID)
+#         return
+#     ticker_id = int(parts[1])
+#     setup_image_path = db.get_setup_image_path(ticker_id)
+    
+#     # Удаление тикера из базы данных
+#     db.delete_ticker(ticker_id)
+    
+#     # Удаление изображения, если оно существует
+#     if setup_image_path and os.path.exists(setup_image_path):
+#         os.remove(setup_image_path)
+    
+#     bot.answer_callback_query(call.id, "Тикер удален!")
+#     bot.send_message(call.message.chat.id, "Тикер успешно удален.", message_thread_id=config.ALARM_THEME_ID)
 
 def edit_ticker(bot, call):
     tickers = db.get_all_tickers()
@@ -394,6 +428,29 @@ def send_alert(ticker_id, message_text, reply_markup=None):
         else:
             logging.error(f"Failed to send alert to {chat_id}: {str(e)}")
 
+def mute_entry(bot, call):
+    ticker_id = int(call.data.split('_')[2])
+    markup = types.InlineKeyboardMarkup()
+    intervals = [("15 минут", 15), ("30 минут", 30), ("1 час", 60), ("4 часа", 240), ("8 часов", 480), ("12 часов", 720)]
+    for label, minutes in intervals:
+        markup.add(types.InlineKeyboardButton(label, callback_data=f"set_mute_{ticker_id}_{minutes}"))
+    bot.send_message(call.message.chat.id, "На сколько заглушить уведомление?", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+
+def set_mute(bot, call):
+    parts = call.data.split('_')
+    ticker_id = int(parts[2])
+    minutes = int(parts[3])
+    delay_until = datetime.now() + timedelta(minutes=minutes)
+    connection = db.get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute("UPDATE tickers SET delay_until = %s WHERE id = %s", (delay_until, ticker_id))
+        connection.commit()
+        bot.send_message(call.message.chat.id, f"Уведомление заглушено на {minutes} минут.", message_thread_id=config.ALARM_THEME_ID)
+    finally:
+        cursor.close()
+        connection.close()
+
 def set_mute(bot, call):
     parts = call.data.split('_')
     ticker_id = int(parts[2])
@@ -465,15 +522,38 @@ def show_archive_tickers_list(bot, message):
     try:
         cursor.execute("SELECT id, ticker, status FROM archive")
         tickers = cursor.fetchall()
+        if not tickers:
+            bot.send_message(ALARM_CHAT_ID, "Архив пуст.", message_thread_id=ALARM_THEME_ID)
+            return
+        
         markup = types.InlineKeyboardMarkup()
         for id, ticker, status in tickers:
             markup.add(types.InlineKeyboardButton(f"{ticker} - {status}", callback_data=f"archive_{id}"))
-        bot.send_message(message.chat.id, "Выберите сделку для просмотра:", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+        markup.add(types.InlineKeyboardButton("Очистить архив", callback_data="clear_all_archive"))
+        markup.add(types.InlineKeyboardButton("Удалить тикер", callback_data="selective_delete_trades"))
+
+        bot.send_message(ALARM_CHAT_ID, "Выберите сделку для просмотра:", reply_markup=markup, message_thread_id=ALARM_THEME_ID)
     except mysql.connector.Error as e:
-        bot.send_message(message.chat.id, f"Ошибка при получении данных: {e}", message_thread_id=config.ALARM_THEME_ID)
+        bot.send_message(ALARM_CHAT_ID, f"Ошибка при получении данных: {e}", message_thread_id=ALARM_THEME_ID)
     finally:
         cursor.close()
         connection.close()
+
+# def show_archive_tickers_list(bot, message):
+#     connection = db.get_db_connection()
+#     cursor = connection.cursor()
+#     try:
+#         cursor.execute("SELECT id, ticker, status FROM archive")
+#         tickers = cursor.fetchall()
+#         markup = types.InlineKeyboardMarkup()
+#         for id, ticker, status in tickers:
+#             markup.add(types.InlineKeyboardButton(f"{ticker} - {status}", callback_data=f"archive_{id}"))
+#         bot.send_message(message.chat.id, "Выберите сделку для просмотра:", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+#     except mysql.connector.Error as e:
+#         bot.send_message(message.chat.id, f"Ошибка при получении данных: {e}", message_thread_id=config.ALARM_THEME_ID)
+#     finally:
+#         cursor.close()
+#         connection.close()
 
 # Отложить сделку
 import re
