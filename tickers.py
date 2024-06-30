@@ -255,7 +255,15 @@ def confirm_delete_ticker(bot, call):
         bot.send_message(call.message.chat.id, "Произошла ошибка при обработке вашего запроса.", message_thread_id=config.ALARM_THEME_ID)
         return
     ticker_id = int(parts[1])
+    setup_image_path = db.get_setup_image_path(ticker_id)
+    
+    # Удаление тикера из базы данных
     db.delete_ticker(ticker_id)
+    
+    # Удаление изображения, если оно существует
+    if setup_image_path and os.path.exists(setup_image_path):
+        os.remove(setup_image_path)
+    
     bot.answer_callback_query(call.id, "Тикер удален!")
     bot.send_message(call.message.chat.id, "Тикер успешно удален.", message_thread_id=config.ALARM_THEME_ID)
 
@@ -532,3 +540,16 @@ def delay_check(bot, ticker_id):
     finally:
         cursor.close()
         connection.close()
+
+# Delete archive all tickers
+def delete_all_archive_trades(bot, call):
+    # Получение всех изображений перед очисткой архива
+    image_paths = db.get_all_archive_image_paths()
+    for path in image_paths:
+        if path and os.path.exists(path):
+            os.remove(path)
+    
+    # Удаление всех записей из архива
+    db.delete_all_archived_trades()
+    bot.answer_callback_query(call.id, "Архив сделок полностью очищен.")
+    bot.send_message(ALARM_CHAT_ID, "Все сделки из архива удалены.", message_thread_id=ALARM_THEME_ID)

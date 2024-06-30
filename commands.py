@@ -53,19 +53,28 @@ def register_handlers(bot):
             cursor.execute("SELECT * FROM archive WHERE id = %s", (trade_id,))
             trade = cursor.fetchone()
             if trade:
+                leverage = 10
+                potential = abs(int(((trade[3] / trade[2] - 1) * leverage * 100)))
+
                 info = (
-                    f"<b>Тикер:</b> <code>{trade[1]}</code>\n"
-                    f"<b>Точка входа:</b> <code>{trade[2]}</code>\n"
-                    f"<b>Тейк-профит:</b> <code>{trade[3]}</code>\n"
-                    f"<b>Стоп-лосс:</b> <code>{trade[4]}</code>\n"
-                    f"<b>Текущий курс:</b> <code>{trade[5]}</code>\n"
-                    f"<b>Дата закрытия:</b> <code>{trade[8].strftime('%Y-%m-%d %H:%M:%S')}</code>\n"
-                    f"<b>Статус:</b> <code>{trade[9]}</code>"
+                    f"────────────────────────────────\n"
+                    f"<b>🔖 Тикер:</b> <code>{trade[1]}</code>\n"
+                    f"────────────────────────────────\n"
+                    f"<b>🎯 Точка входа:</b> <code>{trade[2]}</code>\n"
+                    f"<b>📈 Тейк-профит:</b> <code>{trade[3]}</code>\n"
+                    f"<b>📉 Стоп-лосс:</b> <code>{trade[4]}</code>\n"
+                    f"<b>💹 Текущий курс:</b> <code>{trade[5]}</code>\n"
+                    f"<b>📅 Дата закрытия:</b> <code>{trade[8].strftime('%Y-%m-%d %H:%M:%S')}</code>\n"
+                    f"<b>📝 Статус:</b> <code>{trade[9]}</code>\n"
+                    f"<b>🚀 Потенциал:</b> <code>{potential}% с плечом {leverage}X</code>\n"
+                    f"────────────────────────────────"
                 )
-                bot.send_message(config.ALARM_CHAT_ID, info, parse_mode="HTML", message_thread_id=config.ALARM_THEME_ID)
+
                 if trade[6] and os.path.exists(trade[6]):
                     with open(trade[6], 'rb') as photo:
-                        bot.send_photo(config.ALARM_CHAT_ID, photo, message_thread_id=config.ALARM_THEME_ID)
+                        bot.send_photo(config.ALARM_CHAT_ID, photo, caption=info, parse_mode='HTML', message_thread_id=config.ALARM_THEME_ID)
+                else:
+                    bot.send_message(config.ALARM_CHAT_ID, info, parse_mode="HTML", message_thread_id=config.ALARM_THEME_ID)
             else:
                 bot.send_message(config.ALARM_CHAT_ID, "Сделка не найдена.", message_thread_id=config.ALARM_THEME_ID)
         except Exception as e:
@@ -73,7 +82,7 @@ def register_handlers(bot):
         finally:
             cursor.close()
             connection.close()
-            
+
     # @bot.callback_query_handler(func=lambda call: call.data.startswith("archive_"))
     # def show_archived_trade(call):
     #     trade_id = int(call.data.split('_')[1])
@@ -89,7 +98,7 @@ def register_handlers(bot):
     #                 f"<b>Тейк-профит:</b> <code>{trade[3]}</code>\n"
     #                 f"<b>Стоп-лосс:</b> <code>{trade[4]}</code>\n"
     #                 f"<b>Текущий курс:</b> <code>{trade[5]}</code>\n"
-    #                 f"<b>Дата закрытия:</b> <code>{trade[8].strftime('%Y-%м-%d %H:%M:%S')}</code>\n"
+    #                 f"<b>Дата закрытия:</b> <code>{trade[8].strftime('%Y-%m-%d %H:%M:%S')}</code>\n"
     #                 f"<b>Статус:</b> <code>{trade[9]}</code>"
     #             )
     #             bot.send_message(config.ALARM_CHAT_ID, info, parse_mode="HTML", message_thread_id=config.ALARM_THEME_ID)
@@ -123,11 +132,25 @@ def register_handlers(bot):
         bot.send_message(ALARM_CHAT_ID, "Очистка архива сделок отменена.", message_thread_id=ALARM_THEME_ID)
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("delete_archive_"))
-    def delete_selected_archived(call):
+    def delete_selected_archived(bot, call):
         trade_id = int(call.data.split('_')[2])
+        setup_image_path = db.get_archive_setup_image_path(trade_id)
+        
+        # Удаление сделки из архива
         db.delete_archived_trade(trade_id)
+        
+        # Удаление изображения, если оно существует
+        if setup_image_path and os.path.exists(setup_image_path):
+            os.remove(setup_image_path)
+        
         bot.answer_callback_query(call.id, "Архивная сделка удалена.")
         bot.send_message(ALARM_CHAT_ID, "Сделка успешно удалена из архива.", message_thread_id=ALARM_THEME_ID)
+
+    # def delete_selected_archived(call):
+    #     trade_id = int(call.data.split('_')[2])
+    #     db.delete_archived_trade(trade_id)
+    #     bot.answer_callback_query(call.id, "Архивная сделка удалена.")
+    #     bot.send_message(ALARM_CHAT_ID, "Сделка успешно удалена из архива.", message_thread_id=ALARM_THEME_ID)
 
     @bot.callback_query_handler(func=lambda call: call.data == "selective_delete_trades")
     def show_archive_tickers_list_for_deletion(call):
