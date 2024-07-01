@@ -134,6 +134,9 @@ def finalize_setup(message, bot, ticker_name, exchange, direction, entry_point, 
         # Расчёт потенциала
         potential = abs(Decimal(((take_profit / entry_point - 1) * leverage * 100)))
         # potential = Decimal(((take_profit / entry_point - 1) * leverage * 100))
+
+        # Форматирование текущей стоимости с ограничением до 8 знаков после запятой
+        formatted_current_rate = Decimal(current_rate).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
         
         info = (
             f"─────────────────────\n"
@@ -143,9 +146,10 @@ def finalize_setup(message, bot, ticker_name, exchange, direction, entry_point, 
             f"<b>🎯 Точка входа (ТВХ):</b> <code>{Decimal(entry_point)}</code>\n"
             f"<b>📈 Тейк-профит:</b> <code>{Decimal(take_profit)}</code>\n"
             f"<b>📉 Стоп-лосс:</b> <code>{Decimal(stop_loss)}</code>\n"
-            f"<b>💹 Текущая стоимость:</b> <code>${Decimal(current_rate)}</code>\n"
+            f"<b>💹 Текущая стоимость:</b> <code>${formatted_current_rate}</code>\n"
+            # f"<b>💹 Текущая стоимость:</b> <code>${Decimal(current_rate)}</code>\n"
             f"<b>🖼 Сетап:</b> <code>{setup_image_path}</code>\n"
-            f"<b>🚀 Потенциал:</b> <code>{potential}%</code>\n"
+            f"<b>🚀 Потенциал:</b> <code>{(round(potential, 2))}%</code>\n"
             f"─────────────────────"
         )
         
@@ -190,7 +194,9 @@ def get_current_price(ticker_name):
             if analysis:
                 current_rate = analysis.indicators.get("close")
                 if current_rate is not None:
-                    return exchange, Decimal(current_rate)
+                    # Форматируем число с ограничением до 8 знаков после запятой
+                    formatted_rate = Decimal(current_rate).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
+                    return exchange, formatted_rate
         except Exception as e:
             logging.error(f"Error retrieving data from TradingView for {ticker_name} on {exchange}: {str(e)}")
             continue
@@ -258,7 +264,7 @@ def show_ticker_info(bot, call):
                 f"<b>📈 Тейк-профит:</b> <code>{Decimal(ticker[3])}</code>\n"
                 f"<b>📉 Стоп-лосс:</b> <code>{Decimal(ticker[4])}</code>\n"
                 f"<b>💹 Текущая стоимость:</b> <code>${Decimal(current_rate)}</code>\n"
-                f"<b>🚀 Потенциал:</b> <code>{potential}%</code>\n"
+                f"<b>🚀 Потенциал:</b> <code>{round(potential, 2)}%</code>\n"
                 f"─────────────────────"
             )
 
@@ -453,28 +459,28 @@ def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop
                 markup = types.InlineKeyboardMarkup()
                 markup.add(types.InlineKeyboardButton("Подтвердить вход", callback_data=f"confirm_entry_{ticker_id}"))
                 markup.add(types.InlineKeyboardButton("Заглушить уведомления", callback_data=f"mute_entry_{ticker_id}"))
-                message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: {format_decimal(current_rate)})."
-                send_alert(ticker_id, message_text, reply_markup=markup)
+                message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: `{format_decimal(current_rate)}`)."
+                send_alert(ticker_id, message_text, reply_markup=markup, parse_mode="Markdown")
                 return
             if not entry_confirmed:
                 if abs(current_rate - entry_point) / entry_point < Decimal('0.002'):
                     message_text = f"✅ {ticker_name} достиг точки входа на {exchange}.\n"
                     send_alert(ticker_id, message_text, reply_markup=markup)
         
-        if abs(current_rate - take_profit) / take_profit < Decimal('0.002'):  # Используем диапазон в 0.2% от тейк-профита
-            status = "прибыль"
+        if abs(current_rate - take_profit) / take_profit < Decimal('0.002'):  # Using a range within 0.2% of the take-profit
+            status = "profit"
             logging.debug(f"Sending take profit alert for {ticker_name}")
-            print(f"\n\n\n\n!!!!!!!!!!!!!!!!РАБОТАЕТ ТП!!!!!!!!!!!!!!!!!!!!!!\n🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: {take_profit}.\n\n\n\n")
-            message_text = f"🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: {take_profit}.\nfrom tickers.py"
-            send_alert(ticker_id, message_text)
-            db.archive_and_remove_ticker(ticker_id, str(current_rate), status)
-        elif abs(current_rate - stop_loss) / stop_loss < Decimal('0.002'):  # Используем диапазон в 0.2% от стоп-лосса
-            status = "убыток"
+            message_text = f"🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: $`{take_profit}.`"
+            send_alert(ticker_id, message_text, parse_mode="Markdown")
+            db.archive_and_remove_ticker(ticker_id, current_rate, status)
+
+        elif abs(current_rate - stop_loss) / stop_loss < Decimal('0.002'):  # Using a range within 0.2% of the stop-loss
+            status = "loss"
             logging.debug(f"Sending stop loss alert for {ticker_name}")
-            message_text = f"🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: {stop_loss}.\nfrom tickers.py"
-            print(f"\n\n\n\n!!!!!!!!!!!!!!!!РАБОТАЕТ СЛ!!!!!!!!!!!!!!!!!!!!!!\n🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: {stop_loss}.\n\n\n\n")
-            send_alert(ticker_id, message_text)
-            db.archive_and_remove_ticker(ticker_id, str(current_rate), status)
+            message_text = f"🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: `{stop_loss}`."
+            send_alert(ticker_id, message_text, parse_mode="Markdown")
+            db.archive_and_remove_ticker(ticker_id, current_rate, status)
+
     except Exception as e:
         logging.error(f"Error in check_price_thresholds: {e}")
     finally:
@@ -756,28 +762,44 @@ def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop
 #         cursor.close()
 #         connection.close()
 
-def send_alert(ticker_id, message_text, reply_markup=None):
-    now = datetime.now()
-    if ticker_id in last_alert_time:
-        if now - last_alert_time[ticker_id] < timedelta(minutes=5):
-            logging.debug(f"Alert for {ticker_id} suppressed to avoid spam.")
-            return
-    last_alert_time[ticker_id] = now
-    logging.debug(f"Sending alert for {ticker_id}: {message_text}")
+def send_alert(ticker_id, message_text, reply_markup=None, parse_mode=None):
+    if ticker_id in last_alert_time and (datetime.now() - last_alert_time[ticker_id] < timedelta(minutes=5)):
+        logging.debug(f"Alert for {ticker_id} suppressed to avoid spam.")
+        return
+
+    last_alert_time[ticker_id] = datetime.now()
     chat_id = config.ALARM_CHAT_ID
     try:
         if reply_markup:
-            global_bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, message_thread_id=config.ALARM_THEME_ID)
+            global_bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, message_thread_id=config.ALARM_THEME_ID, parse_mode=parse_mode)
         else:
-            global_bot.send_message(chat_id=chat_id, text=message_text, message_thread_id=config.ALARM_THEME_ID)
-        logging.info(f"Sent alert to {chat_id}: {message_text}")
+            global_bot.send_message(chat_id=chat_id, text=message_text, message_thread_id=config.ALARM_THEME_ID, parse_mode=parse_mode)
+        logging.info(f"Alert sent to {chat_id}: {message_text}")
     except Exception as e:
-        if "message thread not found" in str(e):
-            logging.error(f"Failed to send alert to {chat_id}: {str(e)}. Check if the thread exists.")
-        elif "group chat was upgraded to a supergroup chat" in str(e):
-            logging.error(f"Failed to send alert to {chat_id}: {str(e)}. The group chat was upgraded to a supergroup chat.")
-        else:
-            logging.error(f"Failed to send alert to {chat_id}: {str(e)}")
+        logging.error(f"Failed to send alert to {chat_id}: {str(e)}")
+
+# def send_alert(ticker_id, message_text, reply_markup=None):
+#     now = datetime.now()
+#     if ticker_id in last_alert_time:
+#         if now - last_alert_time[ticker_id] < timedelta(minutes=5):
+#             logging.debug(f"Alert for {ticker_id} suppressed to avoid spam.")
+#             return
+#     last_alert_time[ticker_id] = now
+#     logging.debug(f"Sending alert for {ticker_id}: {message_text}")
+#     chat_id = config.ALARM_CHAT_ID
+#     try:
+#         if reply_markup:
+#             global_bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, message_thread_id=config.ALARM_THEME_ID)
+#         else:
+#             global_bot.send_message(chat_id=chat_id, text=message_text, message_thread_id=config.ALARM_THEME_ID)
+#         logging.info(f"Sent alert to {chat_id}: {message_text}")
+#     except Exception as e:
+#         if "message thread not found" in str(e):
+#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}. Check if the thread exists.")
+#         elif "group chat was upgraded to a supergroup chat" in str(e):
+#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}. The group chat was upgraded to a supergroup chat.")
+#         else:
+#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}")
 
 def mute_entry(bot, call):
     ticker_id = int(call.data.split('_')[2])
