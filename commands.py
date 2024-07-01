@@ -3,6 +3,7 @@ from db import confirm_entry
 from tickers import *
 from ROI import calculate_roi
 from config import PREFERRED_CHAT_ID, ALARM_CHAT_ID, ALARM_THEME_ID
+from decimal import Decimal
 from urllib.parse import urlparse
 import mysql.connector
 import os
@@ -57,17 +58,17 @@ def register_handlers(bot):
                 potential = abs(int(((trade[3] / trade[2] - 1) * leverage * 100)))
 
                 info = (
-                    f"────────────────────────────────\n"
+                    f"─────────────────────\n"
                     f"<b>🔖 Тикер:</b> <code>{trade[1]}</code>\n"
-                    f"────────────────────────────────\n"
-                    f"<b>🎯 Точка входа:</b> <code>{trade[2]}</code>\n"
-                    f"<b>📈 Тейк-профит:</b> <code>{trade[3]}</code>\n"
-                    f"<b>📉 Стоп-лосс:</b> <code>{trade[4]}</code>\n"
-                    f"<b>💹 Текущий курс:</b> <code>{trade[5]}</code>\n"
+                    f"─────────────────────\n"
+                    f"<b>🎯 Точка входа:</b> <code>{Decimal(trade[2])}</code>\n"
+                    f"<b>📈 Тейк-профит:</b> <code>{Decimal(trade[3])}</code>\n"
+                    f"<b>📉 Стоп-лосс:</b> <code>{Decimal(trade[4])}</code>\n"
+                    f"<b>💹 Текущий курс:</b> <code>{Decimal(trade[5])}</code>\n"
                     f"<b>📅 Дата закрытия:</b> <code>{trade[8].strftime('%Y-%m-%d %H:%M:%S')}</code>\n"
                     f"<b>📝 Статус:</b> <code>{trade[9]}</code>\n"
                     f"<b>🚀 Потенциал:</b> <code>{potential}% с плечом {leverage}X</code>\n"
-                    f"────────────────────────────────"
+                    f"─────────────────────"
                 )
 
                 parsed_url = urlparse(trade[6])
@@ -149,7 +150,7 @@ def register_handlers(bot):
                 return
             markup = types.InlineKeyboardMarkup()
             for id, ticker, status in tickers:
-                markup.add(types.InlineKeyboardButton(f"Удалить {ticker} - {status}", callback_data=f"delete_archive_{id}"))
+                markup.add(types.InlineKeyboardButton(f"{ticker} - {status}", callback_data=f"delete_archive_{id}"))
             markup.add(types.InlineKeyboardButton("Очистить архив", callback_data="clear_all_archive"))
             bot.send_message(ALARM_CHAT_ID, "Выберите сделки для удаления или очистите весь архив:", reply_markup=markup, message_thread_id=ALARM_THEME_ID)
         except mysql.connector.Error as e:
@@ -239,8 +240,12 @@ def register_handlers(bot):
 
     @bot.message_handler(commands=['chat_id'])
     def print_chat_id(message):
-        print("\n\nChat ID:\n\n", message.chat.id)
-        bot.reply_to(message, f"Chat ID: {message.chat.id}")
+        chat_id = message.chat.id
+        try:
+            msg_thread_id = message.reply_to_message.message_thread_id
+        except AttributeError:
+            msg_thread_id = "General"
+        bot.reply_to(message, f"Chat ID этого чата: `{chat_id}`\n ID топика: `{msg_thread_id}`", parse_mode="Markdown")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_entry_"))
     def confirm_entry_handler(call):
@@ -278,17 +283,17 @@ def register_handlers(bot):
             potential = abs(int(((trade['take_profit'] / trade['entry_point'] - 1) * leverage * 100)))
 
             info = (
-                f"────────────────────────────────\n"
+                f"─────────────────────\n"
                 f"<b>🔖 Тикер:</b> <code>{trade['ticker']}</code>\n"
-                f"────────────────────────────────\n"
+                f"─────────────────────\n"
                 f"<b>🔄 Направление:</b> <code>{trade['direction']}</code>\n"
-                f"<b>🎯 Точка входа (ТВХ):</b> <code>{trade['entry_point']}</code>\n"
-                f"<b>📈 Тейк-профит:</b> <code>{trade['take_profit']}</code>\n"
-                f"<b>📉 Стоп-лосс:</b> <code>{trade['stop_loss']}</code>\n"
-                f"<b>💹 Текущая стоимость:</b> <code>${trade['current_rate']}</code>\n"
+                f"<b>🎯 Точка входа (ТВХ):</b> <code>{Decimal(trade['entry_point'])}</code>\n"
+                f"<b>📈 Тейк-профит:</b> <code>{Decimal(trade['take_profit'])}</code>\n"
+                f"<b>📉 Стоп-лосс:</b> <code>{Decimal(trade['stop_loss'])}</code>\n"
+                f"<b>💹 Текущая стоимость:</b> <code>${Decimal(trade['current_rate'])}</code>\n"
                 f"<b>📝 Статус:</b> {'Активна' if trade['entry_confirmed'] else 'Неактивна'}\n"
                 f"<b>🚀 Потенциал:</b> <code>{potential}% с плечом {leverage}X</code>\n"
-                f"────────────────────────────────"
+                f"─────────────────────"
             )
             markup = types.InlineKeyboardMarkup()
             markup.add(types.InlineKeyboardButton("Выйти из сделки", callback_data=f"cancel_trade_{trade['id']}"))

@@ -1,6 +1,7 @@
 import mysql.connector
 from datetime import datetime
 from config import DB_CONFIG, ADMIN_IDS, IMAGE_UPLOAD_PATH
+from decimal import Decimal
 import config
 import logging, os
 
@@ -21,10 +22,10 @@ def setup_database():
         CREATE TABLE IF NOT EXISTS tickers (
             id INT AUTO_INCREMENT PRIMARY KEY,
             ticker VARCHAR(35),
-            entry_point DOUBLE,
-            take_profit DOUBLE,
-            stop_loss DOUBLE,
-            current_rate DOUBLE,
+            entry_point DECIMAL(20,10),
+            take_profit DECIMAL(20,10),
+            stop_loss DECIMAL(20,10),
+            current_rate DECIMAL(20,10),
             setup_image_path VARCHAR(255),
             active BOOLEAN DEFAULT TRUE,
             direction VARCHAR(10),
@@ -34,18 +35,18 @@ def setup_database():
         ''')
         
         cursor.execute('''
-        CREATE TABLE IF NOT EXISTS archive (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            ticker VARCHAR(35),
-            entry_point DOUBLE,
-            take_profit DOUBLE,
-            stop_loss DOUBLE,
-            current_rate DOUBLE,
-            setup_image_path VARCHAR(255),
-            direction VARCHAR(10),
-            close_date DATETIME,
-            status VARCHAR(10)
-        )          
+            CREATE TABLE IF NOT EXISTS archive (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                ticker VARCHAR(35),
+                entry_point DECIMAL(20,10),
+                take_profit DECIMAL(20,10),
+                stop_loss DECIMAL(20,10),
+                current_rate DECIMAL(20,10),
+                setup_image_path VARCHAR(255),
+                direction VARCHAR(10),
+                close_date DATETIME,
+                status VARCHAR(10)
+            )
         ''')
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS chats (
@@ -136,11 +137,13 @@ def get_admins():
             connection.close()
     return list(env_admins.union(db_admins))
 
+from decimal import Decimal
+
 def add_new_ticker(ticker_name, direction, entry_point, take_profit, stop_loss, current_rate, setup_image_path):
-    entry_point = round(entry_point, 4)
-    take_profit = round(take_profit, 4)
-    stop_loss = round(stop_loss, 4)
-    current_rate = round(current_rate, 4)
+    entry_point = Decimal(entry_point)
+    take_profit = Decimal(take_profit)
+    stop_loss = Decimal(stop_loss)
+    current_rate = Decimal(current_rate)
 
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -376,6 +379,7 @@ def archive_tickers():
         connection.close()
 
 def archive_and_remove_ticker(ticker_id, current_rate, status):
+    from tickers import send_alert
     connection = get_db_connection()
     cursor = connection.cursor()
     try:
@@ -383,18 +387,119 @@ def archive_and_remove_ticker(ticker_id, current_rate, status):
         ticker = cursor.fetchone()
         if ticker:
             ticker_name, entry_point, take_profit, stop_loss, setup_image_path, direction = ticker
+            entry_point = Decimal(entry_point)
+            take_profit = Decimal(take_profit)
+            stop_loss = Decimal(stop_loss)
+            current_rate = Decimal(current_rate)
             close_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             cursor.execute("""
             INSERT INTO archive (ticker, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction, close_date, status)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction, close_date, status))
             cursor.execute("DELETE FROM tickers WHERE id = %s", (ticker_id,))
+            logging.debug(f"Ticker {ticker_name} archived with status {status}")
+            # Send alert after archiving
+            message_text = f"{'🎉' if status == 'прибыль' else '🛑'} {ticker_name} достиг уровня {'тейк-профита' if status == 'прибыль' else 'стоп-лосса'}: {current_rate}."
+            send_alert(ticker_id, message_text)
         connection.commit()
-    except mysql.connector.Error as e:
-        print(f"Error archiving and deleting ticker: {e}")
+        return
+    except Exception as e:
+        logging.error(f"Error archiving and deleting ticker: {e}")
     finally:
         cursor.close()
         connection.close()
+
+
+# def archive_and_remove_ticker(ticker_id, current_rate, status):
+#     from tickers import send_alert
+#     connection = get_db_connection()
+#     cursor = connection.cursor()
+#     try:
+#         cursor.execute("SELECT ticker, entry_point, take_profit, stop_loss, setup_image_path, direction FROM tickers WHERE id = %s", (ticker_id,))
+#         ticker = cursor.fetchone()
+#         if ticker:
+#             ticker_name, entry_point, take_profit, stop_loss, setup_image_path, direction = ticker
+#             close_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+#             cursor.execute("""
+#             INSERT INTO archive (ticker, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction, close_date, status)
+#             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+#             """, (ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction, close_date, status))
+#             cursor.execute("DELETE FROM tickers WHERE id = %s", (ticker_id,))
+#             logging.debug(f"Ticker {ticker_name} archived with status {status}")
+#             # Send alert after archiving
+#             message_text = f"{'🎉' if status == 'прибыль' else '🛑'} {ticker_name} достиг уровня {'тейк-профита' if status == 'прибыль' else 'стоп-лосса'}: {current_rate}."
+#             send_alert(ticker_id, message_text)
+#         connection.commit()
+#         return
+#     except Exception as e:
+#         logging.error(f"Error archiving and deleting ticker: {e}")
+#     finally:
+#         cursor.close()
+#         connection.close()
+
+# def archive_and_remove_ticker(ticker_id, current_rate, status):
+#     connection = get_db_connection()
+#     cursor = connection.cursor()
+#     try:
+#         cursor.execute("SELECT ticker, entry_point, take_profit, stop_loss, setup_image_path, direction FROM tickers WHERE id = %s", (ticker_id,))
+#         ticker = cursor.fetchone()
+#         if ticker:
+#             ticker_name, entry_point, take_profit, stop_loss, setup_image_path, direction = ticker
+#             close_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+#             cursor.execute("""
+#             INSERT INTO archive (ticker, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction, close_date, status)
+#             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+#             """, (ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction, close_date, status))
+#             cursor.execute("DELETE FROM tickers WHERE id = %s", (ticker_id,))
+#             logging.debug(f"Ticker {ticker_name} archived with status {status}")
+#         connection.commit()
+#     except Exception as e:
+#         logging.error(f"Error archiving and deleting ticker: {e}")
+#     finally:
+#         cursor.close()
+#         connection.close()
+
+# def archive_and_remove_ticker(ticker_id, current_rate, status):
+#     connection = get_db_connection()
+#     cursor = connection.cursor()
+#     try:
+#         cursor.execute("SELECT ticker, entry_point, take_profit, stop_loss, setup_image_path, direction FROM tickers WHERE id = %s", (ticker_id,))
+#         ticker = cursor.fetchone()
+#         if ticker:
+#             ticker_name, entry_point, take_profit, stop_loss, setup_image_path, direction = ticker
+#             close_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+#             cursor.execute("""
+#             INSERT INTO archive (ticker, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction, close_date, status)
+#             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+#             """, (ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction, close_date, status))
+#             cursor.execute("DELETE FROM tickers WHERE id = %s", (ticker_id,))
+#         connection.commit()
+#     except mysql.connector.Error as e:
+#         logging.error(f"Error archiving and deleting ticker: {e}")
+#     finally:
+#         cursor.close()
+#         connection.close()
+
+# def archive_and_remove_ticker(ticker_id, current_rate, status):
+#     connection = get_db_connection()
+#     cursor = connection.cursor()
+#     try:
+#         cursor.execute("SELECT ticker, entry_point, take_profit, stop_loss, setup_image_path, direction FROM tickers WHERE id = %s", (ticker_id,))
+#         ticker = cursor.fetchone()
+#         if ticker:
+#             ticker_name, entry_point, take_profit, stop_loss, setup_image_path, direction = ticker
+#             close_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+#             cursor.execute("""
+#             INSERT INTO archive (ticker, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction, close_date, status)
+#             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+#             """, (ticker_name, entry_point, take_profit, stop_loss, current_rate, setup_image_path, direction, close_date, status))
+#             cursor.execute("DELETE FROM tickers WHERE id = %s", (ticker_id,))
+#         connection.commit()
+#     except mysql.connector.Error as e:
+#         print(f"Error archiving and deleting ticker: {e}")
+#     finally:
+#         cursor.close()
+#         connection.close()
 
 def delete_archived_trade(trade_id):
     connection = get_db_connection()
