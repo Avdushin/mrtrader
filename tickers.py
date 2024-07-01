@@ -5,7 +5,7 @@ from tradingview_ta import TA_Handler, Interval, Exchange
 from apscheduler.schedulers.background import BackgroundScheduler
 from config import PREFERRED_CHAT_ID, ALARM_CHAT_ID, ALARM_THEME_ID
 from urllib.parse import urlparse
-from decimal import Decimal, getcontext, ROUND_DOWN
+from decimal import Decimal, getcontext, ROUND_DOWN, InvalidOperation
 import pytz
 import config
 import os
@@ -87,39 +87,37 @@ def process_direction(bot, call):
     bot.register_next_step_handler(call.message, process_entry_point, bot, ticker_name, exchange, direction, current_rate, [call.message.message_id, msg.message_id])
 
 def process_entry_point(message, bot, ticker_name, exchange, direction, current_rate, message_ids):
-    markup = types.InlineKeyboardMarkup()
     try:
         entry_point = Decimal(message.text)
-    except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для точки входа.", message_thread_id=config.ALARM_THEME_ID)
-        return
-    markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
-    msg = bot.send_message(message.chat.id, "Введите значение тейк-профит:", message_thread_id=config.ALARM_THEME_ID)
-    bot.register_next_step_handler(message, process_take_profit, bot, ticker_name, exchange, direction, entry_point, current_rate, message_ids + [message.message_id, msg.message_id])
+        markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
+        msg = bot.send_message(message.chat.id, "Введите значение тейк-профит:", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+        bot.register_next_step_handler(msg, process_take_profit, bot, ticker_name, exchange, direction, entry_point, current_rate, message_ids + [message.message_id, msg.message_id])
+    except InvalidOperation:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректное числовое значение для точки входа.", message_thread_id=config.ALARM_THEME_ID)
+        # Регистрируем тот же обработчик для повторного ввода
+        bot.register_next_step_handler(message, process_entry_point, bot, ticker_name, exchange, direction, current_rate, message_ids)
 
 def process_take_profit(message, bot, ticker_name, exchange, direction, entry_point, current_rate, message_ids):
-    markup = types.InlineKeyboardMarkup()
     try:
         take_profit = Decimal(message.text)
-        # take_profit = (message.text)
-    except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для тейк-профит.", message_thread_id=config.ALARM_THEME_ID)
-        return
-    markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
-    msg = bot.send_message(message.chat.id, "Введите значение стоп-лосс:", message_thread_id=config.ALARM_THEME_ID)
-    bot.register_next_step_handler(message, process_stop_loss, bot, ticker_name, exchange, direction, entry_point, take_profit, current_rate, message_ids + [message.message_id, msg.message_id])
+        markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
+        msg = bot.send_message(message.chat.id, "Введите значение стоп-лосс:", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+        bot.register_next_step_handler(msg, process_stop_loss, bot, ticker_name, exchange, direction, entry_point, take_profit, current_rate, message_ids + [message.message_id, msg.message_id])
+    except InvalidOperation:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректное числовое значение для тейк-профит.", message_thread_id=config.ALARM_THEME_ID)
+        # Регистрируем тот же обработчик для повторного ввода
+        bot.register_next_step_handler(message, process_take_profit, bot, ticker_name, exchange, direction, entry_point, current_rate, message_ids)
 
 def process_stop_loss(message, bot, ticker_name, exchange, direction, entry_point, take_profit, current_rate, message_ids):
-    markup = types.InlineKeyboardMarkup()
     try:
         stop_loss = Decimal(message.text)
-        # stop_loss = (message.text)
-    except ValueError:
-        bot.send_message(message.chat.id, "Пожалуйста, введите корректное число для стоп-лосс.", message_thread_id=config.ALARM_THEME_ID)
-        return
-    markup.add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
-    msg = bot.send_message(message.chat.id, "Прикрепите изображение сетапа или отправьте URL:", message_thread_id=config.ALARM_THEME_ID)
-    bot.register_next_step_handler(message, finalize_setup, bot, ticker_name, exchange, direction, entry_point, take_profit, stop_loss, current_rate, message_ids + [message.message_id, msg.message_id])
+        markup = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton("Отмена", callback_data="cancel_add_ticker"))
+        msg = bot.send_message(message.chat.id, "Прикрепите изображение сетапа или отправьте URL:", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
+        bot.register_next_step_handler(msg, finalize_setup, bot, ticker_name, exchange, direction, entry_point, take_profit, stop_loss, current_rate, message_ids + [message.message_id, msg.message_id])
+    except InvalidOperation:
+        bot.send_message(message.chat.id, "Пожалуйста, введите корректное числовое значение для стоп-лосс.", message_thread_id=config.ALARM_THEME_ID)
+        # Регистрируем тот же обработчик для повторного ввода
+        bot.register_next_step_handler(message, process_stop_loss, bot, ticker_name, exchange, direction, entry_point, take_profit, current_rate, message_ids)
 
 import os
 from urllib.parse import urlparse
@@ -186,6 +184,7 @@ def save_photo(bot, file_id):
 
 def get_current_price(ticker_name):
     handler = TA_Handler(interval=Interval.INTERVAL_1_MINUTE, screener="crypto")
+    # Проверяем существующий тикер на всех биржах
     for exchange in EXCHANGES:
         handler.exchange = exchange
         handler.symbol = ticker_name
@@ -194,13 +193,29 @@ def get_current_price(ticker_name):
             if analysis:
                 current_rate = analysis.indicators.get("close")
                 if current_rate is not None:
-                    # Форматируем число с ограничением до 8 знаков после запятой
                     formatted_rate = Decimal(current_rate).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
                     return exchange, formatted_rate
         except Exception as e:
             logging.error(f"Error retrieving data from TradingView for {ticker_name} on {exchange}: {str(e)}")
-            continue
+    
+    # Если тикер заканчивается на "USD" и не найден, пытаемся найти тикер с суффиксом "USDT"
+    if ticker_name.endswith("USD"):
+        ticker_name_usdt = ticker_name[:-3] + "USDT"  # Заменяем суффикс
+        for exchange in EXCHANGES:
+            handler.exchange = exchange
+            handler.symbol = ticker_name_usdt
+            try:
+                analysis = handler.get_analysis()
+                if analysis:
+                    current_rate = analysis.indicators.get("close")
+                    if current_rate is not None:
+                        formatted_rate = Decimal(current_rate).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
+                        return exchange, formatted_rate
+            except Exception as e:
+                logging.error(f"Error retrieving data from TradingView for {ticker_name_usdt} on {exchange}: {str(e)}")
+    
     return None, None
+
 
 # def get_current_price(ticker_name):
 #     handler = TA_Handler(interval=Interval.INTERVAL_1_MINUTE, screener="crypto")
@@ -426,11 +441,6 @@ def monitor_prices():
 #         cursor.close()
 #         connection.close()
 
-def format_decimal(value, decimal_places='0.00000000'):
-    # Указываем желаемое количество десятичных разрядов
-    formatter = Decimal('1.' + '0' * decimal_places.count('0'))
-    return value.quantize(formatter, rounding=ROUND_DOWN)
-
 def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
     connection = db.get_db_connection()
     cursor = connection.cursor()
@@ -438,54 +448,109 @@ def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop
         cursor.execute("SELECT entry_confirmed, delay_until FROM tickers WHERE id = %s", (ticker_id,))
         entry_confirmed, delay_until = cursor.fetchone()
 
-        # Преобразование значений в Decimal
         entry_point = Decimal(entry_point)
         take_profit = Decimal(take_profit)
         stop_loss = Decimal(stop_loss)
         current_rate = Decimal(current_rate)
         
+        # Проверка задержки активации тикера
         if delay_until and datetime.now() < delay_until:
-            logging.debug(f"Ticker {ticker_name} is delayed until {delay_until}")
+            logging.debug(f"Активация тикера {ticker_name} отложена до {delay_until}")
             return
 
-        status = ""
-        logging.debug(f"Ticker {ticker_name} - current_rate: {current_rate}, take_profit: {take_profit}, stop_loss: {stop_loss}, entry_confirmed: {entry_confirmed}")
-
+        # Проверка подтверждения входа в тикер
         if not entry_confirmed:
             if entry_point == Decimal('0'):
                 logging.error(f"Точка входа для {ticker_name} равна нулю, проверка будет пропущена...")
                 return
+            # Уведомление о приближении к точке входа
             if abs(current_rate - entry_point) / entry_point < Decimal('0.015'):
                 markup = types.InlineKeyboardMarkup()
                 markup.add(types.InlineKeyboardButton("Подтвердить вход", callback_data=f"confirm_entry_{ticker_id}"))
                 markup.add(types.InlineKeyboardButton("Заглушить уведомления", callback_data=f"mute_entry_{ticker_id}"))
-                message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: `{format_decimal(current_rate)}`)."
+                message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: `{current_rate}`)."
                 send_alert(ticker_id, message_text, reply_markup=markup, parse_mode="Markdown")
                 return
-            if not entry_confirmed:
-                if abs(current_rate - entry_point) / entry_point < Decimal('0.002'):
-                    message_text = f"✅ {ticker_name} достиг точки входа на {exchange}.\n"
-                    send_alert(ticker_id, message_text, reply_markup=markup)
-        
-        if abs(current_rate - take_profit) / take_profit < Decimal('0.002'):  # Using a range within 0.2% of the take-profit
-            status = "profit"
-            logging.debug(f"Sending take profit alert for {ticker_name}")
-            message_text = f"🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: $`{take_profit}.`"
+
+        # Проверка условий для тейк-профита и стоп-лосса
+        if abs(current_rate - take_profit) / take_profit < Decimal('0.002'):  # Если достигнут тейк-профит
+            status = "Прибыль"
+            logging.debug(f"Отправка уведомления о достижении тейк-профита для {ticker_name}")
+            message_text = f"🎉 {ticker_name} на бирже {exchange} достиг уровня тейк-профита: ${take_profit}."
+            print(f"\n\n\n\n!!!!!!!!!!!!!!!!РАБОТАЕТ ТП!!!!!!!!!!!!!!!!!!!!!!\n🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: {take_profit}.\n\n\n\n")
             send_alert(ticker_id, message_text, parse_mode="Markdown")
             db.archive_and_remove_ticker(ticker_id, current_rate, status)
 
-        elif abs(current_rate - stop_loss) / stop_loss < Decimal('0.002'):  # Using a range within 0.2% of the stop-loss
-            status = "loss"
-            logging.debug(f"Sending stop loss alert for {ticker_name}")
-            message_text = f"🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: `{stop_loss}`."
+        elif abs(current_rate - stop_loss) / stop_loss < Decimal('0.002'):  # Если достигнут стоп-лосс
+            status = "Убыток"
+            logging.debug(f"Отправка уведомления о достижении стоп-лосса для {ticker_name}")
+            print(f"\n\n\n\n!!!!!!!!!!!!!!!!РАБОТАЕТ СЛ!!!!!!!!!!!!!!!!!!!!!!\n🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: {stop_loss}.\n\n\n\n")
+            message_text = f"🛑 {ticker_name} на бирже {exchange} достиг уровня стоп-лосса: ${stop_loss}."
             send_alert(ticker_id, message_text, parse_mode="Markdown")
             db.archive_and_remove_ticker(ticker_id, current_rate, status)
 
     except Exception as e:
-        logging.error(f"Error in check_price_thresholds: {e}")
+        logging.error(f"Ошибка в функции check_price_thresholds: {e}")
     finally:
+        # Всегда закрываем курсор и соединение
         cursor.close()
         connection.close()
+
+# def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
+#     connection = db.get_db_connection()
+#     cursor = connection.cursor()
+#     try:
+#         cursor.execute("SELECT entry_confirmed, delay_until FROM tickers WHERE id = %s", (ticker_id,))
+#         entry_confirmed, delay_until = cursor.fetchone()
+
+#         # Преобразование значений в Decimal
+#         entry_point = Decimal(entry_point)
+#         take_profit = Decimal(take_profit)
+#         stop_loss = Decimal(stop_loss)
+#         current_rate = Decimal(current_rate)
+        
+#         if delay_until and datetime.now() < delay_until:
+#             logging.debug(f"Ticker {ticker_name} is delayed until {delay_until}")
+#             return
+
+#         status = ""
+#         logging.debug(f"Ticker {ticker_name} - current_rate: {current_rate}, take_profit: {take_profit}, stop_loss: {stop_loss}, entry_confirmed: {entry_confirmed}")
+
+#         if not entry_confirmed:
+#             if entry_point == Decimal('0'):
+#                 logging.error(f"Точка входа для {ticker_name} равна нулю, проверка будет пропущена...")
+#                 return
+#             if abs(current_rate - entry_point) / entry_point < Decimal('0.015'):
+#                 markup = types.InlineKeyboardMarkup()
+#                 markup.add(types.InlineKeyboardButton("Подтвердить вход", callback_data=f"confirm_entry_{ticker_id}"))
+#                 markup.add(types.InlineKeyboardButton("Заглушить уведомления", callback_data=f"mute_entry_{ticker_id}"))
+#                 message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: `{format_decimal(current_rate)}`)."
+#                 send_alert(ticker_id, message_text, reply_markup=markup, parse_mode="Markdown")
+#                 return
+#             if not entry_confirmed:
+#                 if abs(current_rate - entry_point) / entry_point < Decimal('0.002'):
+#                     message_text = f"✅ {ticker_name} достиг точки входа на {exchange}.\n"
+#                     send_alert(ticker_id, message_text, reply_markup=markup)
+        
+#         if abs(current_rate - take_profit) / take_profit < Decimal('0.002'):
+#             status = "Прибыль"
+#             logging.debug(f"Sending take profit alert for {ticker_name}")
+#             message_text = f"🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: $`{take_profit}.`"
+#             send_alert(ticker_id, message_text, parse_mode="Markdown")
+#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
+
+#         elif abs(current_rate - stop_loss) / stop_loss < Decimal('0.002'):
+#             status = "убыток"
+#             logging.debug(f"Sending stop loss alert for {ticker_name}")
+#             message_text = f"🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: `{stop_loss}`."
+#             send_alert(ticker_id, message_text, parse_mode="Markdown")
+#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
+
+#     except Exception as e:
+#         logging.error(f"Error in check_price_thresholds: {e}")
+#     finally:
+#         cursor.close()
+#         connection.close()
 
 # def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
 #     connection = db.get_db_connection()
@@ -994,7 +1059,7 @@ def delay_check(bot, ticker_id):
         cursor.close()
         connection.close()
 
-# Delete archive all tickers
+# Удаление всех тикеров из архива
 def delete_all_archive_trades(bot, call):
     # Получение всех изображений перед очисткой архива
     image_paths = db.get_all_archive_image_paths()
