@@ -184,72 +184,71 @@ def save_photo(bot, file_id):
 
 def get_current_price(ticker_name):
     handler = TA_Handler(interval=Interval.INTERVAL_1_MINUTE, screener="crypto")
-    # Проверяем существующий тикер на всех биржах
-    for exchange in EXCHANGES:
-        handler.exchange = exchange
-        handler.symbol = ticker_name
-        try:
-            analysis = handler.get_analysis()
-            if analysis:
-                current_rate = analysis.indicators.get("close")
-                if current_rate is not None:
-                    formatted_rate = Decimal(current_rate).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
-                    return exchange, formatted_rate
-        except Exception as e:
-            logging.error(f"Error retrieving data from TradingView for {ticker_name} on {exchange}: {str(e)}")
-    
-    # Если тикер заканчивается на "USD" и не найден, пытаемся найти тикер с суффиксом "USDT"
+    suffixes = ["", ".P", ".PS"]
+    found = False
+
+    # Список возможных вариантов тикера к парам: USDT, USDC
     if ticker_name.endswith("USD"):
-        ticker_name_usdt = ticker_name[:-3] + "USDT"  # Заменяем суффикс
+        usdt_variants = [ticker_name[:-3] + "USDT" + suffix for suffix in suffixes]
+        usdc_variants = [ticker_name[:-3] + "USDC" + suffix for suffix in suffixes]
+        ticker_variants = usdt_variants + usdc_variants
+    else:
+        ticker_variants = [ticker_name + suffix for suffix in suffixes]
+
+    # Поиск тикера на всех биржах для каждого варианта
+    for variant in ticker_variants:
         for exchange in EXCHANGES:
             handler.exchange = exchange
-            handler.symbol = ticker_name_usdt
+            handler.symbol = variant
             try:
                 analysis = handler.get_analysis()
                 if analysis:
                     current_rate = analysis.indicators.get("close")
                     if current_rate is not None:
                         formatted_rate = Decimal(current_rate).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
+                        found = True
                         return exchange, formatted_rate
             except Exception as e:
-                logging.error(f"Error retrieving data from TradingView for {ticker_name_usdt} on {exchange}: {str(e)}")
-    
+                logging.debug(f"Error retrieving data from TradingView for {variant} on {exchange}: {str(e)}")
+
+    # Если ни один из вариантов не найден, сообщаем об ошибке
+    if not found:
+        logging.error(f"None of the variants could be found for {ticker_name} on any exchange.")
     return None, None
 
 
 # def get_current_price(ticker_name):
 #     handler = TA_Handler(interval=Interval.INTERVAL_1_MINUTE, screener="crypto")
-#     for exchange in EXCHANGES:
-#         handler.exchange = exchange
-#         handler.symbol = ticker_name
-#         try:
-#             analysis = handler.get_analysis()
-#             if analysis:
-#                 current_rate = analysis.indicators.get("close")
-#                 if current_rate is not None:
-#                     return exchange, current_rate
-#         except Exception as e:
-#             logging.error(f"Error retrieving data from TradingView for {ticker_name} on {exchange}: {str(e)}")
-#             continue
-    
-    # Если не нашлось пары с суффиксом "USD", ищем с суффиксом "USDT"
-    # if ticker_name.endswith("USD"):
-    #     ticker_name_usdt = ticker_name + "T"
-    #     for exchange in EXCHANGES:
-    #         handler.exchange = exchange
-    #         handler.symbol = ticker_name_usdt
-    #         try:
-    #             analysis = handler.get_analysis()
-    #             if analysis:
-    #                 current_rate = analysis.indicators.get("close")
-    #                 if current_rate is not None:
-    #                     return exchange, current_rate
-    #         except Exception as e:
-    #             logging.error(f"Error retrieving data from TradingView for {ticker_name_usdt} on {exchange}: {str(e)}")
-    #             continue
-    
-    # logging.error(f"Failed to fetch data for {ticker_name} on all exchanges.")
-    # return None, None
+#     suffixes = ["", ".P", ".PS"]
+#     found = False
+
+#     # Список возможных вариантов тикера
+#     if ticker_name.endswith("USD"):
+#         ticker_variants = [ticker_name[:-3] + "USDT" + suffix for suffix in suffixes]
+#     else:
+#         ticker_variants = [ticker_name + suffix for suffix in suffixes]
+
+#     # Поиск тикера на всех биржах для каждого варианта
+#     for variant in ticker_variants:
+#         for exchange in EXCHANGES:
+#             handler.exchange = exchange
+#             handler.symbol = variant
+#             try:
+#                 analysis = handler.get_analysis()
+#                 if analysis:
+#                     current_rate = analysis.indicators.get("close")
+#                     if current_rate is not None:
+#                         formatted_rate = Decimal(current_rate).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
+#                         found = True
+#                         return exchange, formatted_rate
+#             except Exception as e:
+#                 logging.debug(f"Error retrieving data from TradingView for {variant} on {exchange}: {str(e)}")
+#                 continue
+
+#     # Если ни один из вариантов не найден, сообщаем об ошибке
+#     if not found:
+#         logging.error(f"None of the variants could be found for {ticker_name} on any exchange.")
+#     return None, None
 
 def show_ticker_list(bot, message):
     tickers = db.get_all_tickers()
@@ -328,24 +327,6 @@ def confirm_delete_ticker(bot, call):
     bot.answer_callback_query(call.id, "Тикер удален!")
     bot.send_message(call.message.chat.id, f"Тикер {ticker_name} успешно удален.", message_thread_id=config.ALARM_THEME_ID)
 
-# def confirm_delete_ticker(bot, call):
-#     parts = call.data.split("_")
-#     if len(parts) < 2:
-#         bot.send_message(call.message.chat.id, "Произошла ошибка при обработке вашего запроса.", message_thread_id=config.ALARM_THEME_ID)
-#         return
-#     ticker_id = int(parts[1])
-#     setup_image_path = db.get_setup_image_path(ticker_id)
-    
-#     # Удаление тикера из базы данных
-#     db.delete_ticker(ticker_id)
-    
-#     # Удаление изображения, если оно существует
-#     if setup_image_path and os.path.exists(setup_image_path):
-#         os.remove(setup_image_path)
-    
-#     bot.answer_callback_query(call.id, "Тикер удален!")
-#     bot.send_message(call.message.chat.id, "Тикер успешно удален.", message_thread_id=config.ALARM_THEME_ID)
-
 def edit_ticker(bot, call):
     tickers = db.get_all_tickers()
     markup = types.InlineKeyboardMarkup()
@@ -418,29 +399,6 @@ def monitor_prices():
         cursor.close()
         connection.close()
 
-# def monitor_prices():
-#     logging.info("Цикл мониторинга цен...")
-#     connection = db.get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("SELECT id, ticker, entry_point, take_profit, stop_loss, delay_until FROM tickers WHERE active=1")
-#         tickers = cursor.fetchall()
-#         for ticker in tickers:
-#             ticker_id, ticker_name, entry_point, take_profit, stop_loss, delay_until = ticker
-            
-#             if delay_until and datetime.now() < delay_until:
-#                 continue
-            
-#             exchange, current_rate = get_current_price(ticker_name)
-#             if exchange is None or current_rate is None:
-#                 logging.error(f"Failed to fetch current rate for {ticker_name}")
-#                 continue
-#             logging.debug(f"Processing ticker {ticker_name} on {exchange}: current_rate={current_rate}")
-#             check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id)
-#     finally:
-#         cursor.close()
-#         connection.close()
-
 def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
     connection = db.get_db_connection()
     cursor = connection.cursor()
@@ -496,337 +454,6 @@ def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop
         cursor.close()
         connection.close()
 
-# def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
-#     connection = db.get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("SELECT entry_confirmed, delay_until FROM tickers WHERE id = %s", (ticker_id,))
-#         entry_confirmed, delay_until = cursor.fetchone()
-
-#         # Преобразование значений в Decimal
-#         entry_point = Decimal(entry_point)
-#         take_profit = Decimal(take_profit)
-#         stop_loss = Decimal(stop_loss)
-#         current_rate = Decimal(current_rate)
-        
-#         if delay_until and datetime.now() < delay_until:
-#             logging.debug(f"Ticker {ticker_name} is delayed until {delay_until}")
-#             return
-
-#         status = ""
-#         logging.debug(f"Ticker {ticker_name} - current_rate: {current_rate}, take_profit: {take_profit}, stop_loss: {stop_loss}, entry_confirmed: {entry_confirmed}")
-
-#         if not entry_confirmed:
-#             if entry_point == Decimal('0'):
-#                 logging.error(f"Точка входа для {ticker_name} равна нулю, проверка будет пропущена...")
-#                 return
-#             if abs(current_rate - entry_point) / entry_point < Decimal('0.015'):
-#                 markup = types.InlineKeyboardMarkup()
-#                 markup.add(types.InlineKeyboardButton("Подтвердить вход", callback_data=f"confirm_entry_{ticker_id}"))
-#                 markup.add(types.InlineKeyboardButton("Заглушить уведомления", callback_data=f"mute_entry_{ticker_id}"))
-#                 message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: `{format_decimal(current_rate)}`)."
-#                 send_alert(ticker_id, message_text, reply_markup=markup, parse_mode="Markdown")
-#                 return
-#             if not entry_confirmed:
-#                 if abs(current_rate - entry_point) / entry_point < Decimal('0.002'):
-#                     message_text = f"✅ {ticker_name} достиг точки входа на {exchange}.\n"
-#                     send_alert(ticker_id, message_text, reply_markup=markup)
-        
-#         if abs(current_rate - take_profit) / take_profit < Decimal('0.002'):
-#             status = "Прибыль"
-#             logging.debug(f"Sending take profit alert for {ticker_name}")
-#             message_text = f"🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: $`{take_profit}.`"
-#             send_alert(ticker_id, message_text, parse_mode="Markdown")
-#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
-
-#         elif abs(current_rate - stop_loss) / stop_loss < Decimal('0.002'):
-#             status = "убыток"
-#             logging.debug(f"Sending stop loss alert for {ticker_name}")
-#             message_text = f"🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: `{stop_loss}`."
-#             send_alert(ticker_id, message_text, parse_mode="Markdown")
-#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
-
-#     except Exception as e:
-#         logging.error(f"Error in check_price_thresholds: {e}")
-#     finally:
-#         cursor.close()
-#         connection.close()
-
-# def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
-#     connection = db.get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("SELECT entry_confirmed, delay_until FROM tickers WHERE id = %s", (ticker_id,))
-#         entry_confirmed, delay_until = cursor.fetchone()
-        
-#         if delay_until and datetime.now() < delay_until:
-#             logging.debug(f"Ticker {ticker_name} is delayed until {delay_until}")
-#             return
-
-#         status = ""
-#         logging.debug(f"Ticker {ticker_name} - current_rate: {current_rate}, take_profit: {take_profit}, stop_loss: {stop_loss}, entry_confirmed: {entry_confirmed}")
-
-#         if not entry_confirmed:
-#             if entry_point == 0:
-#                 logging.error(f"Точка входа для {ticker_name} равна нулю, проверка будет пропущена...")
-#                 return
-#             if abs(current_rate - entry_point) / entry_point < 0.015:
-#                 markup = types.InlineKeyboardMarkup()
-#                 markup.add(types.InlineKeyboardButton("Подтвердить вход", callback_data=f"confirm_entry_{ticker_id}"))
-#                 markup.add(types.InlineKeyboardButton("Заглушить уведомления", callback_data=f"mute_entry_{ticker_id}"))
-#                 message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: {current_rate})."
-#                 send_alert(ticker_id, message_text, reply_markup=markup)
-#                 return
-#             if not entry_confirmed:
-#                 if abs(current_rate - entry_point) / entry_point < 0.002:
-#                     message_text = f"✅ {ticker_name} достиг точки входа на {exchange}.\n"
-#                     send_alert(ticker_id, message_text, reply_markup=markup)
-        
-#         if abs(current_rate - take_profit) / take_profit < 0.002:  # Используем диапазон в 0.2% от тейк-профита
-#             status = "прибыль"
-#             logging.debug(f"Sending take profit alert for {ticker_name}")
-#             print(f"\n\n\n\n!!!!!!!!!!!!!!!!РАБОТАЕТ ТП!!!!!!!!!!!!!!!!!!!!!!\n🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: {take_profit}.\n\n\n\n")
-#             message_text = f"🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: {take_profit}.\nfrom tickers.py"
-#             send_alert(ticker_id, message_text)
-#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
-#         elif abs(current_rate - stop_loss) / stop_loss < 0.002:  # Используем диапазон в 0.2% от стоп-лосса
-#             status = "убыток"
-#             logging.debug(f"Sending stop loss alert for {ticker_name}")
-#             message_text = f"🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: {stop_loss}.\nfrom tickers.py"
-#             print(f"\n\n\n\n!!!!!!!!!!!!!!!!РАБОТАЕТ СЛ!!!!!!!!!!!!!!!!!!!!!!\n🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: {stop_loss}.\n\n\n\n")
-#             send_alert(ticker_id, message_text)
-#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
-#     except Exception as e:
-#         logging.error(f"Error in check_price_thresholds: {e}")
-#     finally:
-#         cursor.close()
-#         connection.close()
-
-# def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
-#     connection = db.get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("SELECT entry_confirmed, delay_until FROM tickers WHERE id = %s", (ticker_id,))
-#         entry_confirmed, delay_until = cursor.fetchone()
-        
-#         if delay_until and datetime.now() < delay_until:
-#             logging.debug(f"Ticker {ticker_name} is delayed until {delay_until}")
-#             return
-
-#         # message_text = ""
-#         status = ""
-#         logging.debug(f"Ticker {ticker_name} - current_rate: {current_rate}, take_profit: {take_profit}, stop_loss: {stop_loss}, entry_confirmed: {entry_confirmed}")
-
-#         if not entry_confirmed:
-#             if entry_point == 0:
-#                 logging.error(f"Точка входа для {ticker_name} равна нулю, проверка будет пропущена...")
-#                 return
-#             if abs(current_rate - entry_point) / entry_point < 0.015:
-#                 markup = types.InlineKeyboardMarkup()
-#                 markup.add(types.InlineKeyboardButton("Подтвердить вход", callback_data=f"confirm_entry_{ticker_id}"))
-#                 markup.add(types.InlineKeyboardButton("Заглушить уведомления", callback_data=f"mute_entry_{ticker_id}"))
-#                 message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: {current_rate})."
-#                 send_alert(ticker_id, message_text, reply_markup=markup)
-#                 return
-#             if not entry_confirmed:
-#                 if abs(current_rate - entry_point) / entry_point < 0.002:
-#                     message_text = f"✅ {ticker_name} достиг точки входа на {exchange}.\n"
-#                     send_alert(ticker_id, message_text, reply_markup=markup)
-#             # return
-#         if abs(current_rate - take_profit) / take_profit < 0.002:  # Используем диапазон в 0.2% от тейк-профита
-#             message_text = f"🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: {take_profit}."
-#             status = "прибыль"
-#             logging.debug(f"Sending take profit alert for {ticker_name}")
-#             send_alert(ticker_id, f"🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: {take_profit}.")
-#             print(f"\n\n\n\n!!!!!!!!!!!!!!!!РАБОТАЕТ ТП!!!!!!!!!!!!!!!!!!!!!!\n\n\n\n{ticker_name} на {exchange} достиг уровня тейк-профита: {take_profit}")
-#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
-#         elif abs(current_rate - stop_loss) / stop_loss < 0.002:  # Используем диапазон в 0.2% от стоп-лосса
-#             message_text = f"🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: {stop_loss}."
-#             print(f"\n\n\n\n!!!!!!!!!!!!!!!!РАБОТАЕТ СЛ!!!!!!!!!!!!!!!!!!!!!!\n\n\n\n🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: {stop_loss}.")
-#             status = "убыток"
-#             logging.debug(f"Sending stop loss alert for {ticker_name}")
-#             send_alert(ticker_id, f"🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: {stop_loss}.")
-#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
-#     except Exception as e:
-#         logging.error(f"Error in check_price_thresholds: {e}")
-#     finally:
-#         cursor.close()
-#         connection.close()
-
-# def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
-#     connection = db.get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("SELECT entry_confirmed, delay_until FROM tickers WHERE id = %s", (ticker_id,))
-#         entry_confirmed, delay_until = cursor.fetchone()
-        
-#         if delay_until and datetime.now() < delay_until:
-#             logging.debug(f"Ticker {ticker_name} is delayed until {delay_until}")
-#             return
-
-#         message_text = ""
-#         status = ""
-#         logging.debug(f"Ticker {ticker_name} - current_rate: {current_rate}, take_profit: {take_profit}, stop_loss: {stop_loss}, entry_confirmed: {entry_confirmed}")
-
-#         if not entry_confirmed:
-#             if entry_point == 0:
-#                 logging.error(f"Точка входа для {ticker_name} равна нулю, проверка будет пропущена...")
-#                 return
-#             if abs(current_rate - entry_point) / entry_point < 0.015:
-#                 markup = types.InlineKeyboardMarkup()
-#                 markup.add(types.InlineKeyboardButton("Подтвердить вход", callback_data=f"confirm_entry_{ticker_id}"))
-#                 markup.add(types.InlineKeyboardButton("Заглушить уведомления", callback_data=f"mute_entry_{ticker_id}"))
-#                 message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: {current_rate})."
-#                 send_alert(ticker_id, message_text, reply_markup=markup)
-#                 return
-#             if not entry_confirmed and current_rate == entry_point:
-#                 message_text = f"✅ {ticker_name} достиг точки входа на {exchange}.\n"
-#                 send_alert(ticker_id, message_text, reply_markup=markup)
-#             # return
-#         if current_rate == take_profit:
-#             message_text = f"🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: {take_profit}."
-#             status = "прибыль"
-#             logging.debug(f"Sending take profit alert for {ticker_name}")
-#             send_alert(ticker_id, message_text)
-#             print("\n\n\n\n!!!!!!!!!!!!!!!!РАБОТАЕТ ТП!!!!!!!!!!!!!!!!!!!!!!\n\n\n\n")
-#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
-#         elif current_rate == stop_loss:
-#             message_text = f"🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: {stop_loss}."
-#             print("\n\n\n\n!!!!!!!!!!!!!!!!РАБОТАЕТ СЛ!!!!!!!!!!!!!!!!!!!!!!\n\n\n\n")
-#             status = "убыток"
-#             logging.debug(f"Sending stop loss alert for {ticker_name}")
-#             send_alert(ticker_id, message_text)
-#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
-#     except Exception as e:
-#         logging.error(f"Error in check_price_thresholds: {e}")
-#     finally:
-#         cursor.close()
-#         connection.close()
-
-# def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
-#     connection = db.get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("SELECT entry_confirmed, delay_until FROM tickers WHERE id = %s", (ticker_id,))
-#         entry_confirmed, delay_until = cursor.fetchone()
-        
-#         if delay_until and datetime.now() < delay_until:
-#             return
-
-#         message_text = ""
-#         status = ""
-#         logging.debug(f"Ticker {ticker_name} - current_rate: {current_rate}, take_profit: {take_profit}, stop_loss: {stop_loss}, entry_confirmed: {entry_confirmed}")
-
-#         if not entry_confirmed:
-#             if entry_point == 0:
-#                 logging.error(f"Точка входа для {ticker_name} равна нулю, проверка будет пропущена...")
-#                 return
-#             if abs(current_rate - entry_point) / entry_point < 0.015:
-#                 markup = types.InlineKeyboardMarkup()
-#                 markup.add(types.InlineKeyboardButton("Подтвердить вход", callback_data=f"confirm_entry_{ticker_id}"))
-#                 markup.add(types.InlineKeyboardButton("Заглушить уведомления", callback_data=f"mute_entry_{ticker_id}"))
-#                 message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: {current_rate})."
-#                 send_alert(ticker_id, message_text, reply_markup=markup)
-#                 return
-#             if not entry_confirmed and current_rate == entry_point:
-#                 message_text = f"✅ {ticker_name} достиг точки входа на {exchange}.\n"
-#                 send_alert(ticker_id, message_text, reply_markup=markup)
-#             return
-#         if current_rate >= take_profit:
-#             message_text = f"🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: {take_profit}."
-#             status = "прибыль"
-#             logging.debug(f"Sending take profit alert for {ticker_name}")
-#             send_alert(ticker_id, message_text)
-#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
-#         elif current_rate <= stop_loss:
-#             message_text = f"🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: {stop_loss}."
-#             status = "убыток"
-#             logging.debug(f"Sending stop loss alert for {ticker_name}")
-#             send_alert(ticker_id, message_text)
-#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
-#     finally:
-#         cursor.close()
-#         connection.close()
-
-# def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
-#     connection = db.get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("SELECT entry_confirmed, delay_until FROM tickers WHERE id = %s", (ticker_id,))
-#         entry_confirmed, delay_until = cursor.fetchone()
-        
-#         if delay_until and datetime.now() < delay_until:
-#             return
-
-#         message_text = ""
-#         status = ""
-#         if not entry_confirmed:
-#             if entry_point == 0:
-#                 logging.error(f"Точка входа для {ticker_name} равна нулю, проверка будет пропущена...")
-#                 return
-#             if abs(current_rate - entry_point) / entry_point < 0.015:
-#                 markup = types.InlineKeyboardMarkup()
-#                 markup.add(types.InlineKeyboardButton("Подтвердить вход", callback_data=f"confirm_entry_{ticker_id}"))
-#                 markup.add(types.InlineKeyboardButton("Заглушить уведомления", callback_data=f"mute_entry_{ticker_id}"))
-#                 message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: {current_rate})."
-#                 send_alert(ticker_id, message_text, reply_markup=markup)
-#                 return
-#             if not entry_confirmed and current_rate == entry_point:
-#                 message_text = f"✅ {ticker_name} достиг точки входа на {exchange}.\n"
-#                 send_alert(ticker_id, message_text, reply_markup=markup)
-#             return
-#         if current_rate >= take_profit:
-#             message_text = f"🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: {take_profit}."
-#             status = "прибыль"
-#             send_alert(ticker_id, message_text)
-#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
-#         elif current_rate <= stop_loss:
-#             message_text = f"🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: {stop_loss}."
-#             status = "убыток"
-#             send_alert(ticker_id, message_text)
-#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
-#     finally:
-#         cursor.close()
-#         connection.close()
-
-# def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
-#     connection = db.get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("SELECT entry_confirmed, delay_until FROM tickers WHERE id = %s", (ticker_id,))
-#         entry_confirmed, delay_until = cursor.fetchone()
-        
-#         if delay_until and datetime.now() < delay_until:
-#             return
-
-#         message_text = ""
-#         if not entry_confirmed:
-#             if entry_point == 0:
-#                 logging.error(f"Точка входа для {ticker_name} равна нулю, проверка будет пропущена...")
-#                 return
-#             if abs(current_rate - entry_point) / entry_point < 0.015:
-#                 markup = types.InlineKeyboardMarkup()
-#                 markup.add(types.InlineKeyboardButton("Подтвердить вход", callback_data=f"confirm_entry_{ticker_id}"))
-#                 markup.add(types.InlineKeyboardButton("Заглушить уведомления", callback_data=f"mute_entry_{ticker_id}"))
-#                 message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: {current_rate})."
-#                 send_alert(ticker_id, message_text, reply_markup=markup)
-#                 return
-#             if not entry_confirmed and current_rate == entry_point:
-#                 message_text = f"✅ {ticker_name} достиг точки входа на {exchange}.\n"
-#                 send_alert(ticker_id, message_text, reply_markup=markup)
-#             return
-#         if current_rate >= take_profit:
-#             message_text = f"🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: {take_profit}."
-#             send_alert(ticker_id, message_text)
-#             db.update_ticker_active(ticker_id, False)
-#         if current_rate <= stop_loss:
-#             message_text = f"🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: {stop_loss}."
-#             send_alert(ticker_id, message_text)
-#             db.update_ticker_active(ticker_id, False)
-#     finally:
-#         cursor.close()
-#         connection.close()
-
 def send_alert(ticker_id, message_text, reply_markup=None, parse_mode=None):
     if ticker_id in last_alert_time and (datetime.now() - last_alert_time[ticker_id] < timedelta(minutes=5)):
         logging.debug(f"Alert for {ticker_id} suppressed to avoid spam.")
@@ -842,29 +469,6 @@ def send_alert(ticker_id, message_text, reply_markup=None, parse_mode=None):
         logging.info(f"Alert sent to {chat_id}: {message_text}")
     except Exception as e:
         logging.error(f"Failed to send alert to {chat_id}: {str(e)}")
-
-# def send_alert(ticker_id, message_text, reply_markup=None):
-#     now = datetime.now()
-#     if ticker_id in last_alert_time:
-#         if now - last_alert_time[ticker_id] < timedelta(minutes=5):
-#             logging.debug(f"Alert for {ticker_id} suppressed to avoid spam.")
-#             return
-#     last_alert_time[ticker_id] = now
-#     logging.debug(f"Sending alert for {ticker_id}: {message_text}")
-#     chat_id = config.ALARM_CHAT_ID
-#     try:
-#         if reply_markup:
-#             global_bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, message_thread_id=config.ALARM_THEME_ID)
-#         else:
-#             global_bot.send_message(chat_id=chat_id, text=message_text, message_thread_id=config.ALARM_THEME_ID)
-#         logging.info(f"Sent alert to {chat_id}: {message_text}")
-#     except Exception as e:
-#         if "message thread not found" in str(e):
-#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}. Check if the thread exists.")
-#         elif "group chat was upgraded to a supergroup chat" in str(e):
-#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}. The group chat was upgraded to a supergroup chat.")
-#         else:
-#             logging.error(f"Failed to send alert to {chat_id}: {str(e)}")
 
 def mute_entry(bot, call):
     ticker_id = int(call.data.split('_')[2])
@@ -906,7 +510,6 @@ def set_mute(bot, call):
         cursor.close()
         connection.close()
 
-
 def set_mute(bot, call):
     parts = call.data.split('_')
     ticker_id = int(parts[2])
@@ -923,7 +526,6 @@ def set_mute(bot, call):
     finally:
         cursor.close()
         connection.close()
-
 
 def archive_and_delete_ticker(ticker_id):
     connection = db.get_db_connection()
@@ -976,22 +578,6 @@ def show_archive_tickers_list(bot, message):
     finally:
         cursor.close()
         connection.close()
-
-# def show_archive_tickers_list(bot, message):
-#     connection = db.get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("SELECT id, ticker, status FROM archive")
-#         tickers = cursor.fetchall()
-#         markup = types.InlineKeyboardMarkup()
-#         for id, ticker, status in tickers:
-#             markup.add(types.InlineKeyboardButton(f"{ticker} - {status}", callback_data=f"archive_{id}"))
-#         bot.send_message(message.chat.id, "Выберите сделку для просмотра:", reply_markup=markup, message_thread_id=config.ALARM_THEME_ID)
-#     except mysql.connector.Error as e:
-#         bot.send_message(message.chat.id, f"Ошибка при получении данных: {e}", message_thread_id=config.ALARM_THEME_ID)
-#     finally:
-#         cursor.close()
-#         connection.close()
 
 # Отложить сделку
 import re
