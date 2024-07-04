@@ -375,10 +375,10 @@ def monitor_prices():
     connection = db.get_db_connection()
     cursor = connection.cursor()
     try:
-        cursor.execute("SELECT id, ticker, entry_point, take_profit, stop_loss, delay_until FROM tickers WHERE active=1")
+        cursor.execute("SELECT id, ticker, entry_point, take_profit, stop_loss, delay_until, direction FROM tickers WHERE active=1")
         tickers = cursor.fetchall()
         for ticker in tickers:
-            ticker_id, ticker_name, entry_point, take_profit, stop_loss, delay_until = ticker
+            ticker_id, ticker_name, entry_point, take_profit, stop_loss, delay_until, direction = ticker  # Добавлено извлечение direction
             
             if delay_until and datetime.now() < delay_until:
                 continue
@@ -394,22 +394,46 @@ def monitor_prices():
                 continue
 
             logging.debug(f"Processing ticker {ticker_name} on {exchange}: current_rate={current_rate}")
-            check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id)
+            check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id, direction)  # Добавлен параметр direction
     finally:
         cursor.close()
         connection.close()
 
-def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
+# def monitor_prices():
+#     logging.info("Цикл мониторинга цен...")
+#     connection = db.get_db_connection()
+#     cursor = connection.cursor()
+#     try:
+#         cursor.execute("SELECT id, ticker, entry_point, take_profit, stop_loss, delay_until FROM tickers WHERE active=1")
+#         tickers = cursor.fetchall()
+#         for ticker in tickers:
+#             ticker_id, ticker_name, entry_point, take_profit, stop_loss, delay_until = ticker
+            
+#             if delay_until and datetime.now() < delay_until:
+#                 continue
+            
+#             exchange, current_rate_str = get_current_price(ticker_name)
+#             if exchange is None or current_rate_str is None:
+#                 logging.error(f"Failed to fetch current rate for {ticker_name}")
+#                 continue
+#             try:
+#                 current_rate = float(current_rate_str)
+#             except ValueError:
+#                 logging.error(f"Invalid current rate value: {current_rate_str}")
+#                 continue
+
+#             logging.debug(f"Processing ticker {ticker_name} on {exchange}: current_rate={current_rate}")
+#             check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id)
+#     finally:
+#         cursor.close()
+#         connection.close()
+
+def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id, direction):
     connection = db.get_db_connection()
     cursor = connection.cursor()
     try:
         cursor.execute("SELECT entry_confirmed, delay_until FROM tickers WHERE id = %s", (ticker_id,))
         entry_confirmed, delay_until = cursor.fetchone()
-
-        entry_point = Decimal(entry_point)
-        take_profit = Decimal(take_profit)
-        stop_loss = Decimal(stop_loss)
-        current_rate = Decimal(current_rate)
 
         if delay_until and datetime.now() < delay_until:
             logging.debug(f"Активация тикера {ticker_name} отложена до {delay_until}")
@@ -419,46 +443,34 @@ def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop
             if entry_point == Decimal('0'):
                 logging.error(f"Точка входа для {ticker_name} равна нулю, проверка будет пропущена...")
                 return
-            if entry_point != Decimal('0') and abs(current_rate - entry_point) / entry_point < Decimal('0.015'):
+            
+            # Преобразование значений с округлением
+            entry_point = Decimal(entry_point).quantize(Decimal('0.0001'), rounding=ROUND_DOWN)
+            current_rate = Decimal(current_rate).quantize(Decimal('0.0001'), rounding=ROUND_DOWN)
+
+            if abs(current_rate - entry_point) / entry_point < Decimal('0.015'):
                 markup = types.InlineKeyboardMarkup()
                 markup.add(types.InlineKeyboardButton("Подтвердить вход", callback_data=f"confirm_entry_{ticker_id}"))
                 markup.add(types.InlineKeyboardButton("Заглушить уведомления", callback_data=f"mute_entry_{ticker_id}"))
-                message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: `{current_rate}`)."
+                message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: `{entry_point}` (текущая цена: `{current_rate}`)."
                 send_alert(ticker_id, message_text, reply_markup=markup, parse_mode="Markdown")
                 return
 
-        if take_profit != Decimal('0') and abs(current_rate - take_profit) / take_profit < Decimal('0.002'):
+        if take_profit != Decimal('0') and abs(Decimal(current_rate) - take_profit) / take_profit < Decimal('0.002'):
             status = "Прибыль"
-            message_text = f"🎉 {ticker_name} на бирже {exchange} достиг уровня тейк-профита: ${take_profit}."
-            send_profit_loss_alert(global_bot, ticker_id, entry_point, take_profit, current_rate, message_text, status)  # Обновленный вызов
+            # message_text = f"🎉 {ticker_name} на бирже {exchange} достиг уровня тейк-профита: <code>{take_profit}</code>."
+            db.archive_and_remove_ticker(ticker_id, current_rate, status, global_bot)
 
-        if stop_loss != Decimal('0') and abs(current_rate - stop_loss) / stop_loss < Decimal('0.002'):
+        if stop_loss != Decimal('0') and abs(Decimal(current_rate) - stop_loss) / stop_loss < Decimal('0.002'):
             status = "Убыток"
-            message_text = f"🛑 {ticker_name} на бирже {exchange} достиг уровня стоп-лосса: ${stop_loss}."
-            send_profit_loss_alert(global_bot, ticker_id, entry_point, stop_loss, current_rate, message_text, status)  # Обновленный вызов
+            # message_text = f"🛑 {ticker_name} на бирже {exchange} достиг уровня стоп-лосса: <code>{stop_loss}</code>."
+            db.archive_and_remove_ticker(ticker_id, current_rate, status, global_bot)
 
     except Exception as e:
         logging.error(f"Ошибка в функции check_price_thresholds: {e}")
     finally:
         cursor.close()
         connection.close()
-
-def send_profit_loss_alert(bot, ticker_id, entry_point, result_point, current_rate, message_text, status):
-    setup_image_path = "imgs/sandwich_logo.jpg"  # Использование статичного фонового изображения
-    output_image_path = f"outputs/{ticker_id}_result.png"
-
-    # Создание изображения с данными сделки
-    result_image_path = create_pnl_image(entry_point, result_point, current_rate, setup_image_path, output_image_path)
-    
-    if result_image_path:
-        with open(result_image_path, 'rb') as photo:
-            bot.send_photo(ALARM_CHAT_ID, photo, caption=message_text, parse_mode="HTML", message_thread_id=ALARM_THEME_ID)
-    else:
-        # Если изображение не создано, отправить текстовое сообщение
-        bot.send_message(ALARM_CHAT_ID, message_text, parse_mode="HTML", message_thread_id=ALARM_THEME_ID)
-
-    # Обновление статуса тикера в базе данных
-    db.archive_and_remove_ticker(ticker_id, current_rate, status)
 
 # def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
 #     connection = db.get_db_connection()
@@ -490,17 +502,13 @@ def send_profit_loss_alert(bot, ticker_id, entry_point, result_point, current_ra
 
 #         if take_profit != Decimal('0') and abs(current_rate - take_profit) / take_profit < Decimal('0.002'):
 #             status = "Прибыль"
-#             logging.debug(f"Отправка уведомления о достижении тейк-профита для {ticker_name}")
 #             message_text = f"🎉 {ticker_name} на бирже {exchange} достиг уровня тейк-профита: ${take_profit}."
-#             send_alert(ticker_id, message_text, parse_mode="Markdown")
-#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
+#             send_profit_loss_alert(global_bot, ticker_id, entry_point, take_profit, current_rate, message_text, status)  # Обновленный вызов
 
 #         if stop_loss != Decimal('0') and abs(current_rate - stop_loss) / stop_loss < Decimal('0.002'):
 #             status = "Убыток"
-#             logging.debug(f"Отправка уведомления о достижении стоп-лосса для {ticker_name}")
 #             message_text = f"🛑 {ticker_name} на бирже {exchange} достиг уровня стоп-лосса: ${stop_loss}."
-#             send_alert(ticker_id, message_text, parse_mode="Markdown")
-#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
+#             send_profit_loss_alert(global_bot, ticker_id, entry_point, stop_loss, current_rate, message_text, status)  # Обновленный вызов
 
 #     except Exception as e:
 #         logging.error(f"Ошибка в функции check_price_thresholds: {e}")
@@ -508,60 +516,50 @@ def send_profit_loss_alert(bot, ticker_id, entry_point, result_point, current_ra
 #         cursor.close()
 #         connection.close()
 
-# def check_price_thresholds(ticker_name, exchange, entry_point, take_profit, stop_loss, current_rate, ticker_id):
-#     connection = db.get_db_connection()
-#     cursor = connection.cursor()
-#     try:
-#         cursor.execute("SELECT entry_confirmed, delay_until FROM tickers WHERE id = %s", (ticker_id,))
-#         entry_confirmed, delay_until = cursor.fetchone()
+def send_profit_loss_alert(bot, ticker_id, ticker_name, direction, entry_point, result_point, current_rate, message_text, status):
+    setup_image_path = "src/imgs/sandwich_logo.jpg"  # Использование статичного фонового изображения
+    output_image_path = f"outputs/{ticker_name}_{status}_result.png"
 
-#         entry_point = Decimal(entry_point)
-#         take_profit = Decimal(take_profit)
-#         stop_loss = Decimal(stop_loss)
-#         current_rate = Decimal(current_rate)
-        
-#         # Проверка задержки активации тикера
-#         if delay_until and datetime.now() < delay_until:
-#             logging.debug(f"Активация тикера {ticker_name} отложена до {delay_until}")
-#             return
+    # Создание изображения с данными сделки
+    result_image_path = create_pnl_image(ticker_name, entry_point, result_point, current_rate, setup_image_path, output_image_path, direction)
+    
+    if result_image_path:
+        try:
+            with open(result_image_path, 'rb') as photo:
+                bot.send_photo(ALARM_CHAT_ID, photo, caption=message_text, parse_mode="HTML", message_thread_id=ALARM_THEME_ID)
+            # Удаление файла после отправки фото
+            os.remove(result_image_path)
+        except OSError as e:
+            logging.error(f"Failed to delete the file: {e}")
+            # Если файл не удалось удалить, попробуем снова после короткой задержки
+            import time
+            time.sleep(1)  # Подождите одну секунду
+            try:
+                os.remove(result_image_path)
+            except OSError as e:
+                logging.error(f"Failed to delete the file on second attempt: {e}")
+    else:
+        # Если изображение не создано, отправить текстовое сообщение
+        bot.send_message(ALARM_CHAT_ID, message_text, parse_mode="HTML", message_thread_id=ALARM_THEME_ID)
 
-#         # Проверка подтверждения входа в тикер
-#         if not entry_confirmed:
-#             if entry_point == Decimal('0'):
-#                 logging.error(f"Точка входа для {ticker_name} равна нулю, проверка будет пропущена...")
-#                 return
-#             # Уведомление о приближении к точке входа
-#             if abs(current_rate - entry_point) / entry_point < Decimal('0.015'):
-#                 markup = types.InlineKeyboardMarkup()
-#                 markup.add(types.InlineKeyboardButton("Подтвердить вход", callback_data=f"confirm_entry_{ticker_id}"))
-#                 markup.add(types.InlineKeyboardButton("Заглушить уведомления", callback_data=f"mute_entry_{ticker_id}"))
-#                 message_text = f"🚨 {ticker_name} находится в пределах 1.5% от точки входа: {entry_point} (текущая цена: `{current_rate}`)."
-#                 send_alert(ticker_id, message_text, reply_markup=markup, parse_mode="Markdown")
-#                 return
+# def send_profit_loss_alert(bot, ticker_id, ticker_name, direction, entry_point, result_point, current_rate, message_text, status):
+#     setup_image_path = "src/imgs/sandwich_logo.jpg"  # Использование статичного фонового изображения
+#     output_image_path = f"outputs/{ticker_name}_{status}_result.png"
 
-#         # Проверка условий для тейк-профита и стоп-лосса
-#         if abs(current_rate - take_profit) / take_profit < Decimal('0.002'):  # Если достигнут тейк-профит
-#             status = "Прибыль"
-#             logging.debug(f"Отправка уведомления о достижении тейк-профита для {ticker_name}")
-#             message_text = f"🎉 {ticker_name} на бирже {exchange} достиг уровня тейк-профита: ${take_profit}."
-#             print(f"\n\n\n\n!!!!!!!!!!!!!!!!РАБОТАЕТ ТП!!!!!!!!!!!!!!!!!!!!!!\n🎉 {ticker_name} на {exchange} достиг уровня тейк-профита: {take_profit}.\n\n\n\n")
-#             send_alert(ticker_id, message_text, parse_mode="Markdown")
-#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
+#     # Создание изображения с данными сделки
+#     result_image_path = create_pnl_image(ticker_name, entry_point, result_point, current_rate, setup_image_path, output_image_path, direction)
+    
+#     if result_image_path:
+#         with open(result_image_path, 'rb') as photo:
+#             bot.send_photo(ALARM_CHAT_ID, photo, caption=message_text, parse_mode="HTML", message_thread_id=ALARM_THEME_ID)
+#             # Удаление файла после отправки фото
+#             os.remove(result_image_path)
+#     else:
+#         # Если изображение не создано, отправить текстовое сообщение
+#         bot.send_message(ALARM_CHAT_ID, message_text, parse_mode="HTML", message_thread_id=ALARM_THEME_ID)
 
-#         elif abs(current_rate - stop_loss) / stop_loss < Decimal('0.002'):  # Если достигнут стоп-лосс
-#             status = "Убыток"
-#             logging.debug(f"Отправка уведомления о достижении стоп-лосса для {ticker_name}")
-#             print(f"\n\n\n\n!!!!!!!!!!!!!!!!РАБОТАЕТ СЛ!!!!!!!!!!!!!!!!!!!!!!\n🛑 {ticker_name} на {exchange} достиг уровня стоп-лосса: {stop_loss}.\n\n\n\n")
-#             message_text = f"🛑 {ticker_name} на бирже {exchange} достиг уровня стоп-лосса: ${stop_loss}."
-#             send_alert(ticker_id, message_text, parse_mode="Markdown")
-#             db.archive_and_remove_ticker(ticker_id, current_rate, status)
-
-#     except Exception as e:
-#         logging.error(f"Ошибка в функции check_price_thresholds: {e}")
-#     finally:
-#         # Всегда закрываем курсор и соединение
-#         cursor.close()
-#         connection.close()
+#     # Обновление статуса тикера в базе данных
+#     db.archive_and_remove_ticker(ticker_id, current_rate, status)
 
 def send_alert(ticker_id, message_text, reply_markup=None, parse_mode=None):
     if ticker_id in last_alert_time and (datetime.now() - last_alert_time[ticker_id] < timedelta(minutes=10)):
